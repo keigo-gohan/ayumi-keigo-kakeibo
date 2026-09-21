@@ -97,6 +97,25 @@
             </div>
           </div>
 
+          <!-- 累計貯金カード -->
+          <div class="bg-emerald-50/80 p-3 rounded-xl border border-emerald-100 space-y-2 text-xs">
+            <span class="text-[10px] text-emerald-700 font-bold block">💰 全期間 累計貯金</span>
+            <div class="grid grid-cols-3 gap-2 text-center">
+              <div class="bg-white p-2 rounded-lg border border-emerald-100">
+                <span class="text-[9px] text-indigo-600 font-bold block">使用可</span>
+                <span class="text-sm font-black text-indigo-900">¥{{ totalCumulativeUsableSavings.toLocaleString() }}</span>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-slate-200">
+                <span class="text-[9px] text-slate-500 font-bold block">使用不可</span>
+                <span class="text-sm font-black text-slate-700">¥{{ totalCumulativeUnusableSavings.toLocaleString() }}</span>
+              </div>
+              <div class="bg-white p-2 rounded-lg border border-emerald-200">
+                <span class="text-[9px] text-emerald-600 font-bold block">合計</span>
+                <span class="text-sm font-black text-emerald-700">¥{{ totalCumulativeSavings.toLocaleString() }}</span>
+              </div>
+            </div>
+          </div>
+
           <!-- グラフ切替タブ -->
           <div class="space-y-2">
             <div class="flex bg-slate-100 p-1 rounded-xl text-[11px] font-bold border border-slate-200">
@@ -908,6 +927,14 @@
           return allMonthsSummary.value.reduce((s, m) => s + (m.finalUsable || 0), 0);
         });
 
+        const totalCumulativeUnusableSavings = computed(() => {
+          return allMonthsSummary.value.reduce((s, m) => s + (m.finalUnusable || 0), 0);
+        });
+
+        const totalCumulativeSavings = computed(() => {
+          return totalCumulativeUsableSavings.value + totalCumulativeUnusableSavings.value;
+        });
+
         const progressPercent = computed(() => {
           if (!targetAmount.value || targetAmount.value <= 0) return 0;
           const p = (totalCumulativeUsableSavings.value / targetAmount.value) * 100;
@@ -1013,7 +1040,7 @@
           totalIncome, totalExpense, savings, usableRatio, savingsUsable, savingsUnusable, baseSavingsUsable, baseSavingsUnusable,
           carryoverUsableSum, carryoverUnusableSum, extraUsableSum, extraUnusableSum, keigoSum, mayumiSum, keigoShare, mayumiShare,
           showAddForm, showTemplateModal, showSummarySection, toggleSummary, allMonthsSummary, isSummaryLoading, currentYear, yearlySummary,
-          targetName, targetAmount, totalCumulativeUsableSavings, progressPercent, selectedChartType,
+          targetName, targetAmount, totalCumulativeUsableSavings, totalCumulativeUnusableSavings, totalCumulativeSavings, progressPercent, selectedChartType,
           newItem, newCarryover, newExtra, newTemp, errorMessage,
           fetchMonthData, resetToTemplate, saveItem, togglePayer, addNewItem, addCarryoverItem, addExtraExpenseItem, deleteItem,
           saveTemplateItem, addTemplateItem, deleteTemplateItem, closeTemplateModal, saveSettings,
