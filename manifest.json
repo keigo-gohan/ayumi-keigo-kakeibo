@@ -1,0 +1,18 @@
+{
+  "name": "ふたり月次収支ダッシュボード",
+  "short_name": "ふたり家計簿",
+  "description": "夫婦の月次収支をまとめて管理するダッシュボード",
+  "start_url": "./index.html",
+  "display": "standalone",
+  "background_color": "#f8fafc",
+  "theme_color": "#4f46e5",
+  "orientation": "portrait",
+  "icons": [
+    {
+      "src": "apple-touch-icon.png",
+      "sizes": "180x180",
+      "type": "image/png",
+      "purpose": "any maskable"
+    }
+  ]
+}
