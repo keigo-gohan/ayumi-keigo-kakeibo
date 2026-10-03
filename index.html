@@ -2,551 +2,722 @@
 <html lang="ja">
 <head>
   <meta charset="UTF-8">
-  <meta name="viewport" content="width=device-width, initial-scale=1.0">
-  <title>ふたり月次収支ダッシュボード</title>
-  
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover">
+  <title>ふたり月次収支</title>
+  <meta name="description" content="ふたりの月次収支と貯金の推移を記録する家計ノート">
+  <meta name="theme-color" content="#1f1d1b">
+
   <!-- PWA -->
   <link rel="manifest" href="./manifest.json">
   <meta name="apple-mobile-web-app-capable" content="yes">
   <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent">
   <link rel="apple-touch-icon" href="./apple-touch-icon.png">
   <link rel="icon" href="./apple-touch-icon.png">
-  
+
+  <link rel="preconnect" href="https://fonts.googleapis.com">
+  <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+  <link href="https://fonts.googleapis.com/css2?family=Zen+Maru+Gothic:wght@400;500;700;900&display=swap" rel="stylesheet">
+
   <script src="https://unpkg.com/vue@3/dist/vue.global.js"></script>
-  <script src="https://cdn.tailwindcss.com"></script>
   <script src="./db.js"></script>
   <script src="./import_data.js"></script>
   <script src="https://cdn.jsdelivr.net/npm/chart.js"></script>
+  <script>
+    // 描画前にテーマを適用（ちらつき防止）
+    (function () {
+      var t = localStorage.getItem('kakeibo_theme') || 'dark';
+      document.documentElement.setAttribute('data-theme', t);
+      var m = document.querySelector('meta[name="theme-color"]');
+      if (m) m.setAttribute('content', t === 'light' ? '#efe6d6' : '#1f1d1b');
+    })();
+  </script>
+
   <style>
+    :root {
+      --bg: #1f1d1b;
+      --card: #2a2725;
+      --card-2: #322e2b;
+      --line: #3d3834;
+      --text: #e8e0d4;
+      --sub: #9b9089;
+      --faint: #6f6660;
+      --ayumi: #fbbf24;
+      --keigo: #67e8f9;
+      --ayumi-ink: #fbbf24;
+      --keigo-ink: #67e8f9;
+      --common: #a8a29e;
+      --usable: #9cc58a;
+      --unusable: #c4a582;
+      --income: #e8e0d4;
+      --expense: #f08a7e;
+      --accent: #d97706;
+      --nav-bg: rgba(31, 29, 27, 0.92);
+      --error-bg: #3a2422;
+      --sheet-border: transparent;
+      --radius: 14px;
+      --nav-h: 64px;
+    }
+    /* 手帳（クリーム/ベージュ） */
+    [data-theme="light"] {
+      --bg: #efe6d6;
+      --card: #fbf7ee;
+      --card-2: #f3ecdf;
+      --line: #e2d6c2;
+      --text: #3b322a;
+      --sub: #857767;
+      --faint: #b2a591;
+      --ayumi: #f2b41f;
+      --keigo: #3fc1d6;
+      --ayumi-ink: #a8690a;
+      --keigo-ink: #0e7a8c;
+      --common: #a09486;
+      --usable: #6f9a5b;
+      --unusable: #b88d5c;
+      --income: #3b322a;
+      --expense: #c65a48;
+      --accent: #c06a0a;
+      --nav-bg: rgba(251, 247, 238, 0.94);
+      --error-bg: #f8e1dc;
+      --sheet-border: #e6dccb;
+    }
+    [data-theme="light"] .sheet {
+      box-shadow: 0 1px 0 rgba(120, 95, 60, 0.06);
+    }
+    * { box-sizing: border-box; margin: 0; padding: 0; }
     [v-cloak] { display: none !important; }
+    html, body { background: var(--bg); }
+    body {
+      font-family: 'Zen Maru Gothic', 'Hiragino Maru Gothic ProN', sans-serif;
+      color: var(--text);
+      font-size: 14px;
+      line-height: 1.6;
+      -webkit-font-smoothing: antialiased;
+      -webkit-tap-highlight-color: transparent;
+    }
+    button, input, select { font: inherit; color: inherit; }
+    button { cursor: pointer; background: none; border: none; }
+    .num { font-variant-numeric: tabular-nums; letter-spacing: 0.01em; }
+
+    .app {
+      max-width: 480px; margin: 0 auto; min-height: 100vh;
+      padding: calc(env(safe-area-inset-top) + 8px) 16px calc(var(--nav-h) + env(safe-area-inset-bottom) + 24px);
+    }
+
+    /* ── ヘッダー ── */
+    .topbar { display: flex; align-items: center; justify-content: space-between; padding: 8px 0 16px; }
+    .brand { font-size: 13px; color: var(--sub); font-weight: 500; letter-spacing: 0.08em; }
+    .month-nav { display: flex; align-items: center; gap: 4px; }
+    .month-nav button.arrow {
+      width: 32px; height: 32px; border-radius: 50%; color: var(--sub); font-size: 18px;
+      transition: background .2s, color .2s;
+    }
+    .month-nav button.arrow:hover { background: var(--card); color: var(--text); }
+    .top-right { display: flex; align-items: center; gap: 4px; }
+    .theme-btn {
+      width: 32px; height: 32px; border-radius: 50%; color: var(--sub);
+      display: flex; align-items: center; justify-content: center; transition: background .2s, color .2s;
+    }
+    .theme-btn:hover { background: var(--card); color: var(--text); }
+    .theme-btn svg { width: 18px; height: 18px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .month-label { position: relative; font-weight: 700; font-size: 17px; padding: 2px 6px; }
+    .month-label input {
+      position: absolute; inset: 0; opacity: 0; width: 100%; cursor: pointer;
+    }
+
+    /* ── セクション（ノートのページ） ── */
+    .page { animation: fadeUp .35s ease both; }
+    @keyframes fadeUp { from { opacity: 0; transform: translateY(6px); } to { opacity: 1; transform: none; } }
+
+    .sheet {
+      background: var(--card); border-radius: var(--radius); border: 1px solid var(--sheet-border);
+      padding: 18px 18px; margin-bottom: 14px;
+    }
+    .sheet-title {
+      display: flex; justify-content: space-between; align-items: baseline;
+      font-size: 13px; color: var(--sub); font-weight: 500; letter-spacing: 0.05em;
+      padding-bottom: 10px; margin-bottom: 14px; border-bottom: 1px dashed var(--line);
+    }
+    .sheet-title small { font-size: 12px; color: var(--faint); }
+
+    /* ── ヒーロー ── */
+    .hero { text-align: center; padding: 26px 18px 20px; }
+    .hero-label { font-size: 13px; color: var(--sub); }
+    .hero-amount { font-size: 40px; font-weight: 900; line-height: 1.2; margin: 4px 0 2px; }
+    .hero-amount .yen { font-size: 22px; margin-right: 2px; color: var(--sub); font-weight: 700; }
+    .hero-amount.neg { color: var(--expense); }
+
+    /* ── 分割バー ── */
+    .split-bar {
+      display: flex; height: 12px; border-radius: 6px; overflow: hidden;
+      background: var(--line); margin: 14px 0 10px;
+    }
+    .split-bar > div { height: 100%; transition: width .8s cubic-bezier(.2,.8,.2,1); }
+    .split-bar.tall { height: 22px; border-radius: 8px; }
+    .legend { display: flex; justify-content: space-between; gap: 8px; font-size: 13px; }
+    .legend-item { display: flex; align-items: center; gap: 6px; }
+    .dot { width: 9px; height: 9px; border-radius: 50%; flex-shrink: 0; }
+    .legend-item .val { font-weight: 700; }
+
+    /* ── 罫線リスト ── */
+    .rows > .row {
+      display: flex; align-items: center; justify-content: space-between; gap: 10px;
+      padding: 10px 0; border-bottom: 1px solid var(--line);
+    }
+    .rows > .row:last-child { border-bottom: none; }
+    .row-label { display: flex; align-items: center; gap: 8px; min-width: 0; }
+    .row-label .title { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .row-sub { font-size: 12px; color: var(--sub); }
+    .row-val { font-weight: 700; white-space: nowrap; }
+    .pct { font-size: 12px; color: var(--sub); font-weight: 500; margin-left: 6px; }
+
+    /* ── 取り分 ── */
+    .share-grid { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .share {
+      background: var(--card-2); border-radius: 12px; padding: 14px;
+      border-left: 4px solid var(--c);
+    }
+    .share .who { font-size: 13px; color: var(--ci, var(--c)); font-weight: 700; }
+    .share .amt { font-size: 22px; font-weight: 900; margin-top: 2px; }
+    .share .sub { font-size: 12px; color: var(--sub); }
+
+    /* ── 目標リング ── */
+    .goal { display: flex; align-items: center; gap: 18px; }
+    .ring { position: relative; width: 112px; height: 112px; flex-shrink: 0; }
+    .ring svg { transform: rotate(-90deg); }
+    .ring circle { fill: none; stroke-width: 10; }
+    .ring .track { stroke: var(--line); }
+    .ring .bar { stroke: var(--usable); stroke-linecap: round; transition: stroke-dashoffset 1s cubic-bezier(.2,.8,.2,1); }
+    .ring .center { position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center; }
+    .ring .center b { font-size: 22px; font-weight: 900; }
+    .ring .center span { font-size: 11px; color: var(--sub); }
+    .goal-info { flex: 1; font-size: 13px; }
+    .goal-info .name { font-size: 16px; font-weight: 700; margin-bottom: 6px; }
+    .goal-info dl { display: grid; grid-template-columns: auto 1fr; gap: 2px 10px; }
+    .goal-info dt { color: var(--sub); }
+    .goal-info dd { text-align: right; font-weight: 700; }
+
+    /* ── タブ ── */
+    .seg {
+      display: flex; background: var(--card); border-radius: 12px; padding: 4px; margin-bottom: 14px;
+    }
+    .seg button {
+      flex: 1; padding: 8px 4px; border-radius: 9px; font-size: 13px; color: var(--sub); font-weight: 500;
+      transition: background .2s, color .2s;
+    }
+    .seg button.on { background: var(--line); color: var(--text); font-weight: 700; }
+    .seg.small button { padding: 6px 4px; font-size: 12px; }
+
+    /* ── 明細行 ── */
+    .item {
+      display: flex; align-items: center; gap: 10px; padding: 10px 0; border-bottom: 1px solid var(--line);
+    }
+    .item:last-child { border-bottom: none; }
+    .item .body { flex: 1; min-width: 0; }
+    .item .title { display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+    .chip {
+      display: inline-block; font-size: 12px; font-weight: 700; padding: 1px 10px; border-radius: 999px;
+      border: 1px solid currentColor; margin-top: 3px; transition: transform .1s;
+    }
+    .chip:active { transform: scale(.94); }
+    .chip.keigo { color: var(--keigo-ink); }
+    .chip.ayumi { color: var(--ayumi-ink); }
+    .chip.common { color: var(--common); }
+    .chip.usable { color: var(--usable); }
+    .chip.unusable { color: var(--unusable); }
+    .amount-input {
+      width: 104px; padding: 7px 10px; text-align: right; font-weight: 700;
+      background: var(--bg); border: 1px solid var(--line); border-radius: 9px; outline: none;
+      font-variant-numeric: tabular-nums; transition: border-color .2s;
+    }
+    .amount-input:focus { border-color: var(--sub); }
+    .del { color: var(--faint); font-size: 16px; padding: 4px; transition: color .2s; }
+    .del:hover { color: var(--expense); }
+    .cat-head {
+      font-size: 12px; color: var(--sub); padding: 14px 0 2px; display: flex; justify-content: space-between;
+    }
+    .cat-head:first-child { padding-top: 0; }
+
+    /* ── フォーム ── */
+    .form { display: grid; gap: 8px; margin-top: 12px; padding-top: 12px; border-top: 1px dashed var(--line); }
+    .form .cols { display: grid; grid-template-columns: 1fr 1fr; gap: 8px; }
+    .form .cols3 { display: grid; grid-template-columns: 1fr 1fr 1fr; gap: 8px; }
+    .field {
+      width: 100%; padding: 9px 11px; background: var(--bg); border: 1px solid var(--line);
+      border-radius: 9px; outline: none; font-size: 14px;
+    }
+    .field:focus { border-color: var(--sub); }
+    select.field { appearance: none; -webkit-appearance: none; }
+    .btn {
+      padding: 10px 14px; border-radius: 10px; font-weight: 700; font-size: 14px;
+      background: var(--text); color: var(--bg); transition: opacity .2s, transform .1s;
+    }
+    .btn:active { transform: scale(.98); }
+    .btn.ghost { background: transparent; color: var(--sub); border: 1px dashed var(--line); }
+    .btn.ghost:hover { color: var(--text); border-color: var(--sub); }
+    .btn.sub { background: var(--line); color: var(--text); }
+    .btn.full { width: 100%; }
+    .btn-row { display: flex; gap: 8px; }
+    .btn-row .btn { flex: 1; }
+
+    .empty { text-align: center; padding: 28px 16px; color: var(--sub); }
+    .empty p { margin-bottom: 14px; }
+    .note { font-size: 12px; color: var(--sub); }
+    .error { background: var(--error-bg); color: var(--expense); padding: 12px; border-radius: 10px; margin-bottom: 14px; font-size: 13px; }
+
+    /* ── 推移 ── */
+    .stat-pair { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
+    .stat .label { font-size: 12px; color: var(--sub); }
+    .stat .value { font-size: 18px; font-weight: 700; }
+    .chart-box { position: relative; height: 240px; }
+    .donut-box { position: relative; height: 180px; }
+    .donut-center {
+      position: absolute; inset: 0; display: flex; flex-direction: column; align-items: center; justify-content: center;
+      pointer-events: none;
+    }
+    .donut-center span { font-size: 12px; color: var(--sub); }
+    .donut-center b { font-size: 18px; font-weight: 900; }
+
+    table.months { width: 100%; border-collapse: collapse; font-size: 13px; }
+    table.months th {
+      font-weight: 500; color: var(--sub); font-size: 12px; text-align: right; padding: 6px 4px;
+      border-bottom: 1px solid var(--line);
+    }
+    table.months th:first-child, table.months td:first-child { text-align: left; }
+    table.months td { text-align: right; padding: 9px 4px; border-bottom: 1px solid var(--line); }
+    table.months tr.click { cursor: pointer; transition: background .15s; }
+    table.months tr.click:hover td { background: var(--card-2); }
+    table.months tr.current td { color: var(--accent); font-weight: 700; }
+    .neg { color: var(--expense); }
+
+    details.settings { margin-bottom: 10px; }
+    details.settings > summary {
+      list-style: none; cursor: pointer; display: flex; justify-content: space-between; align-items: center;
+      font-weight: 700; font-size: 14px;
+    }
+    details.settings > summary::-webkit-details-marker { display: none; }
+    details.settings > summary::after { content: '＋'; color: var(--sub); font-weight: 400; }
+    details.settings[open] > summary::after { content: '－'; }
+    details.settings[open] > summary { margin-bottom: 12px; padding-bottom: 10px; border-bottom: 1px dashed var(--line); }
+
+    /* ── 下部ナビ ── */
+    .nav {
+      position: fixed; left: 0; right: 0; bottom: 0; z-index: 40;
+      background: var(--nav-bg); backdrop-filter: blur(12px); -webkit-backdrop-filter: blur(12px);
+      border-top: 1px solid var(--line);
+      padding-bottom: env(safe-area-inset-bottom);
+    }
+    .nav-inner { max-width: 480px; margin: 0 auto; display: flex; height: var(--nav-h); }
+    .nav button {
+      flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center; gap: 2px;
+      color: var(--faint); font-size: 12px; font-weight: 500; transition: color .2s; position: relative;
+    }
+    .nav button svg { width: 22px; height: 22px; stroke: currentColor; fill: none; stroke-width: 1.8; stroke-linecap: round; stroke-linejoin: round; }
+    .nav button.on { color: var(--text); font-weight: 700; }
+    .nav button.on::before {
+      content: ''; position: absolute; top: 0; left: 30%; right: 30%; height: 2px; border-radius: 2px; background: var(--accent);
+    }
   </style>
 </head>
-<body class="bg-slate-100 text-slate-800 antialiased min-h-screen">
+<body>
 
-  <div id="app" v-cloak class="max-w-md mx-auto min-h-screen bg-slate-50 flex flex-col shadow-xl">
-    
+  <div id="app" v-cloak class="app">
+
     <!-- ヘッダー -->
-    <header class="bg-gradient-to-r from-indigo-600 to-blue-600 text-white p-5 rounded-b-2xl shadow-md">
-      <div class="flex justify-between items-center mb-2">
-        <h1 class="text-xl font-bold tracking-wide">ふたり月次収支</h1>
-        <div class="flex items-center space-x-2">
-          <button @click="showTemplateModal = true" class="bg-white/25 hover:bg-white/35 text-white text-xs font-bold px-2.5 py-1.5 rounded-lg border border-white/30 backdrop-blur-sm transition">
-            ⚙️ テンプレ・目標
-          </button>
-          <input type="month" v-model="selectedMonth" @change="fetchMonthData" 
-            class="bg-white/20 text-white text-xs font-bold px-2 py-1.5 rounded-lg border border-white/30 backdrop-blur-sm outline-none">
-        </div>
+    <header class="topbar">
+      <h1 class="brand">ふたりの家計ノート</h1>
+      <div class="top-right">
+      <button id="theme-toggle" class="theme-btn" @click="toggleTheme" :aria-label="theme === 'dark' ? '手帳モードにする' : 'ダークモードにする'">
+        <svg v-if="theme === 'dark'" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4"/><path d="M12 2v2M12 20v2M4.9 4.9l1.4 1.4M17.7 17.7l1.4 1.4M2 12h2M20 12h2M4.9 19.1l1.4-1.4M17.7 6.3l1.4-1.4"/></svg>
+        <svg v-else viewBox="0 0 24 24"><path d="M20 14.5A8 8 0 1 1 9.5 4a6.5 6.5 0 0 0 10.5 10.5z"/></svg>
+      </button>
+      <div class="month-nav">
+        <button id="prev-month" class="arrow" @click="shiftMonth(-1)" aria-label="前の月">‹</button>
+        <label class="month-label num">
+          {{ monthLabel }}
+          <input id="month-picker" type="month" v-model="selectedMonth" @change="fetchMonthData">
+        </label>
+        <button id="next-month" class="arrow" @click="shiftMonth(1)" aria-label="次の月">›</button>
       </div>
-      <div class="flex justify-between items-center text-xs text-blue-100 mt-1">
-        <button @click="toggleSummary" class="bg-white/20 hover:bg-white/30 text-white px-2.5 py-1 rounded-lg text-[11px] font-bold border border-white/20 transition flex items-center space-x-1">
-          <span>📊</span>
-          <span>{{ showSummarySection ? 'まとめ・推移を隠す' : 'まとめ・推移を見る' }}</span>
-        </button>
-        <button @click="resetToTemplate" class="text-white bg-blue-500/60 hover:bg-blue-500/80 px-2 py-1 rounded text-[11px] font-bold border border-white/20 transition">
-          🔄 初期値に合わせる
-        </button>
       </div>
     </header>
 
-    <main class="p-4 flex-1 space-y-5">
+    <div v-if="errorMessage" class="error">{{ errorMessage }}</div>
 
-      <!-- エラー表示エリア -->
-      <div v-if="errorMessage" class="p-3 bg-red-100 border border-red-300 text-red-700 text-xs rounded-lg break-all">
-        <p class="font-bold mb-1">⚠️ 設定エラー:</p>
-        <p>{{ errorMessage }}</p>
+    <!-- ═════════ 画面1: 今月 ═════════ -->
+    <main v-if="currentScreen === 'month'" class="page" key="month">
+
+      <div v-if="items.length === 0" class="sheet empty">
+        <p>この月はまだ記録がありません</p>
+        <button id="load-template-empty" class="btn" @click="resetToTemplate">テンプレートから作成</button>
       </div>
 
-      <!-- 目標プログレスバー -->
-      <section class="bg-white p-4 rounded-2xl shadow-sm border border-emerald-100 animate-fade-in relative overflow-hidden">
-        <div class="flex justify-between items-end mb-2 relative z-10">
-          <span class="text-xs font-bold text-slate-600">🎯 目標: {{ targetName }}</span>
-          <span class="text-xs font-black text-emerald-600">¥{{ targetAmount.toLocaleString() }}</span>
-        </div>
-        <div class="w-full bg-slate-100 rounded-full h-4 border border-slate-200 overflow-hidden relative z-10 shadow-inner">
-          <div class="bg-gradient-to-r from-emerald-400 to-teal-500 h-4 rounded-full transition-all duration-1000 ease-out" 
-               :style="{ width: progressPercent + '%' }"></div>
-        </div>
-        <div class="flex justify-between mt-1.5 text-[10px] font-bold relative z-10">
-          <span class="text-slate-500">現在の貯金(使用可)累計: ¥{{ totalCumulativeUsableSavings.toLocaleString() }}</span>
-          <span class="text-emerald-600 bg-emerald-50 px-1.5 rounded">{{ progressPercent }}% 達成!</span>
-        </div>
-      </section>
+      <template v-else>
+        <!-- 今月の貯金 -->
+        <section class="sheet hero">
+          <div class="hero-label">今月の貯金</div>
+          <div class="hero-amount num" :class="{ neg: savings < 0 }"><span class="yen">¥</span>{{ fmt(savings) }}</div>
+          <div class="split-bar">
+            <div :style="{ width: pctOf(Math.max(savingsUsable,0), Math.max(savingsUsable,0) + Math.max(savingsUnusable,0)) + '%', background: 'var(--usable)' }"></div>
+            <div :style="{ width: pctOf(Math.max(savingsUnusable,0), Math.max(savingsUsable,0) + Math.max(savingsUnusable,0)) + '%', background: 'var(--unusable)' }"></div>
+          </div>
+          <div class="legend">
+            <div class="legend-item"><span class="dot" style="background: var(--usable)"></span>使用可 <span class="val num">¥{{ fmt(savingsUsable) }}</span></div>
+            <div class="legend-item"><span class="dot" style="background: var(--unusable)"></span>使用不可 <span class="val num">¥{{ fmt(savingsUnusable) }}</span></div>
+          </div>
+        </section>
 
-      <!-- まとめ・推移セクション -->
-      <section v-if="showSummarySection" class="bg-white p-4 rounded-2xl shadow-sm border border-indigo-200 space-y-4 animate-fade-in">
-        <div class="flex justify-between items-center border-b pb-2">
-          <h2 class="text-xs font-extrabold text-indigo-900 flex items-center space-x-1">
-            <span>📈</span>
-            <span>推移 & {{ currentYear }}年 サマリー</span>
-          </h2>
-          <span class="text-[10px] text-slate-400">登録済み期間の記録</span>
-        </div>
-
-        <div v-if="isSummaryLoading" class="text-center py-4 text-xs text-slate-400">読み込み中...</div>
-        
-        <div v-else class="space-y-4">
-          <!-- 選択年の累計カード -->
-          <div class="bg-indigo-50/80 p-3 rounded-xl border border-indigo-100 grid grid-cols-2 gap-2 text-xs">
-            <div>
-              <span class="text-[10px] text-indigo-600 font-bold block">{{ currentYear }}年 総収入</span>
-              <span class="text-sm font-black text-indigo-900">¥{{ yearlySummary.income.toLocaleString() }}</span>
-            </div>
-            <div>
-              <span class="text-[10px] text-indigo-600 font-bold block">{{ currentYear }}年 貯金合計</span>
-              <span class="text-sm font-black text-indigo-900">¥{{ yearlySummary.savings.toLocaleString() }}</span>
+        <!-- 収入の行き先 -->
+        <section class="sheet">
+          <div class="sheet-title"><span>収入の行き先</span><small class="num">収入 ¥{{ fmt(totalIncome) }}</small></div>
+          <div class="split-bar tall">
+            <div v-for="seg in flowSegments" :key="seg.key" :style="{ width: seg.pct + '%', background: seg.color }"></div>
+          </div>
+          <div class="rows">
+            <div v-for="seg in flowSegments" :key="seg.key" class="row">
+              <div class="row-label"><span class="dot" :style="{ background: seg.color }"></span><span class="title">{{ seg.label }}</span></div>
+              <div class="row-val num">¥{{ fmt(seg.value) }}<span class="pct">{{ seg.pct.toFixed(0) }}%</span></div>
             </div>
           </div>
+          <p v-if="totalExpense > totalIncome" class="note neg" style="margin-top:8px">支出が収入を ¥{{ fmt(totalExpense - totalIncome) }} 上回っています</p>
+        </section>
 
-          <!-- 累計貯金カード -->
-          <div class="bg-emerald-50/80 p-3 rounded-xl border border-emerald-100 space-y-2 text-xs">
-            <span class="text-[10px] text-emerald-700 font-bold block">💰 全期間 累計貯金</span>
-            <div class="grid grid-cols-3 gap-2 text-center">
-              <div class="bg-white p-2 rounded-lg border border-emerald-100">
-                <span class="text-[9px] text-indigo-600 font-bold block">使用可</span>
-                <span class="text-sm font-black text-indigo-900">¥{{ totalCumulativeUsableSavings.toLocaleString() }}</span>
-              </div>
-              <div class="bg-white p-2 rounded-lg border border-slate-200">
-                <span class="text-[9px] text-slate-500 font-bold block">使用不可</span>
-                <span class="text-sm font-black text-slate-700">¥{{ totalCumulativeUnusableSavings.toLocaleString() }}</span>
-              </div>
-              <div class="bg-white p-2 rounded-lg border border-emerald-200">
-                <span class="text-[9px] text-emerald-600 font-bold block">合計</span>
-                <span class="text-sm font-black text-emerald-700">¥{{ totalCumulativeSavings.toLocaleString() }}</span>
-              </div>
+        <!-- 各自の取り分 -->
+        <section class="sheet">
+          <div class="sheet-title"><span>各自の取り分</span><small>千円単位で切り上げ</small></div>
+          <div class="share-grid">
+            <div class="share" style="--c: var(--ayumi); --ci: var(--ayumi-ink)">
+              <div class="who">麻由美</div>
+              <div class="amt num">¥{{ fmt(mayumiShare) }}</div>
+              <div class="sub num">担当額 ¥{{ fmt(mayumiSum) }}</div>
+            </div>
+            <div class="share" style="--c: var(--keigo); --ci: var(--keigo-ink)">
+              <div class="who">慶吾</div>
+              <div class="amt num">¥{{ fmt(keigoShare) }}</div>
+              <div class="sub num">担当額 ¥{{ fmt(keigoSum) }}</div>
             </div>
           </div>
+        </section>
+      </template>
 
-          <!-- グラフ切替タブ -->
-          <div class="space-y-2">
-            <div class="flex bg-slate-100 p-1 rounded-xl text-[11px] font-bold border border-slate-200">
-              <button @click="selectedChartType = 'savings_monthly'" 
-                :class="selectedChartType === 'savings_monthly' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-500'" 
-                class="flex-1 py-1.5 rounded-lg transition">
-                単月貯金
-              </button>
-              <button @click="selectedChartType = 'savings_cumulative'" 
-                :class="selectedChartType === 'savings_cumulative' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-500'" 
-                class="flex-1 py-1.5 rounded-lg transition">
-                累積貯金
-              </button>
-              <button @click="selectedChartType = 'extra_flow'" 
-                :class="selectedChartType === 'extra_flow' ? 'bg-white text-indigo-700 shadow-sm border border-slate-200' : 'text-slate-500'" 
-                class="flex-1 py-1.5 rounded-lg transition">
-                繰越・都度
-              </button>
-            </div>
-
-            <!-- 推移グラフ本体 -->
-            <div class="bg-slate-50 p-2 rounded-xl border border-slate-200">
-              <div class="relative h-52 w-full">
-                <canvas ref="trendChartRef"></canvas>
-              </div>
-            </div>
+      <!-- 目標 -->
+      <section class="sheet">
+        <div class="sheet-title"><span>目標</span><small>使用可の累計で計算</small></div>
+        <div class="goal">
+          <div class="ring">
+            <svg width="112" height="112" viewBox="0 0 112 112">
+              <circle class="track" cx="56" cy="56" r="48"></circle>
+              <circle class="bar" cx="56" cy="56" r="48" :stroke-dasharray="RING_C" :stroke-dashoffset="RING_C * (1 - progressPercent / 100)"></circle>
+            </svg>
+            <div class="center"><b class="num">{{ Math.floor(progressPercent) }}%</b><span>達成</span></div>
           </div>
-
-          <!-- 月別推移テーブル一覧 -->
-          <div class="space-y-2 max-h-64 overflow-y-auto pr-1">
-            <div v-for="row in allMonthsSummary" :key="row.month" class="bg-slate-50 p-2.5 rounded-xl border border-slate-200 text-xs space-y-1.5">
-              <div class="flex justify-between items-center font-bold text-slate-700 border-b border-slate-200/60 pb-1">
-                <span>{{ row.month }}</span>
-                <span class="text-indigo-600">最終貯金: ¥{{ row.savings.toLocaleString() }}</span>
-              </div>
-              <div class="grid grid-cols-4 gap-1 text-[10px] text-slate-500 text-center">
-                <div>収入<br>¥{{ row.income.toLocaleString() }}</div>
-                <div>支出<br>¥{{ row.expense.toLocaleString() }}</div>
-                <div>繰越<br>+¥{{ row.carryover.toLocaleString() }}</div>
-                <div>都度<br>-¥{{ row.extraExpense.toLocaleString() }}</div>
-              </div>
-              <div class="grid grid-cols-2 gap-1 text-[10px] pt-1 border-t border-slate-200/60 font-semibold">
-                <span class="text-indigo-700">使用可: ¥{{ row.finalUsable.toLocaleString() }}</span>
-                <span class="text-slate-600 text-right">使用不可: ¥{{ row.finalUnusable.toLocaleString() }}</span>
-              </div>
-            </div>
+          <div class="goal-info">
+            <div class="name">{{ targetName }}</div>
+            <dl class="num">
+              <dt>目標</dt><dd>¥{{ fmt(targetAmount) }}</dd>
+              <dt>現在</dt><dd style="color: var(--usable)">¥{{ fmt(totalCumulativeUsableSavings) }}</dd>
+              <dt>あと</dt><dd>¥{{ fmt(Math.max(0, targetAmount - totalCumulativeUsableSavings)) }}</dd>
+            </dl>
           </div>
         </div>
-      </section>
-
-      <!-- 今月の収支メインカード -->
-      <section class="space-y-3">
-        <div class="bg-white p-4 rounded-2xl shadow-sm border border-slate-200/80">
-          <div class="grid grid-cols-3 text-center divide-x divide-slate-100">
-            <div>
-              <p class="text-[10px] font-bold text-slate-400 uppercase">総収入</p>
-              <p class="text-sm font-extrabold text-emerald-600 mt-1">¥{{ totalIncome.toLocaleString() }}</p>
-            </div>
-            <div>
-              <p class="text-[10px] font-bold text-slate-400 uppercase">総支出</p>
-              <p class="text-sm font-extrabold text-rose-500 mt-1">¥{{ totalExpense.toLocaleString() }}</p>
-            </div>
-            <div>
-              <p class="text-[10px] font-bold text-slate-400 uppercase">今月の貯金</p>
-              <p class="text-sm font-extrabold text-indigo-600 mt-1">¥{{ savings.toLocaleString() }}</p>
-            </div>
-          </div>
-
-          <!-- 貯金の内訳 -->
-          <div class="mt-4 pt-3 border-t border-slate-100 grid grid-cols-2 gap-2 text-xs">
-            <div class="bg-indigo-50/70 p-2.5 rounded-xl border border-indigo-100/50">
-              <span class="text-[10px] text-indigo-600 font-bold block">貯金 (使用可)</span>
-              <span class="text-sm font-extrabold text-indigo-900">¥{{ savingsUsable.toLocaleString() }}</span>
-              <span class="text-[9px] text-slate-400 block mt-0.5">ベース: ¥{{ baseSavingsUsable.toLocaleString() }}<br>+ 繰越: ¥{{ carryoverUsableSum.toLocaleString() }}<br>- 都度: ¥{{ extraUsableSum.toLocaleString() }}</span>
-            </div>
-            <div class="bg-slate-100 p-2.5 rounded-xl border border-slate-200/60">
-              <span class="text-[10px] text-slate-500 font-bold block">貯金 (使用不可)</span>
-              <span class="text-sm font-extrabold text-slate-700">¥{{ savingsUnusable.toLocaleString() }}</span>
-              <span class="text-[9px] text-slate-400 block mt-0.5">ベース: ¥{{ baseSavingsUnusable.toLocaleString() }}<br>+ 繰越: ¥{{ carryoverUnusableSum.toLocaleString() }}<br>- 都度: ¥{{ extraUnusableSum.toLocaleString() }}</span>
-            </div>
-          </div>
-        </div>
-
-        <!-- 各自の取り分カード -->
-        <div class="grid grid-cols-2 gap-3">
-          <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200/80">
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-xs font-bold text-slate-600">慶吾 取り分</span>
-              <span class="text-[10px] bg-blue-100 text-blue-700 font-bold px-1.5 py-0.5 rounded">切り上げ</span>
-            </div>
-            <p class="text-lg font-black text-blue-600">¥{{ keigoShare.toLocaleString() }}</p>
-            <p class="text-[10px] text-slate-400 mt-0.5">実担当額: ¥{{ keigoSum.toLocaleString() }}</p>
-          </div>
-
-          <div class="bg-white p-3.5 rounded-2xl shadow-sm border border-slate-200/80">
-            <div class="flex items-center justify-between mb-1">
-              <span class="text-xs font-bold text-slate-600">麻由美 取り分</span>
-              <span class="text-[10px] bg-pink-100 text-pink-700 font-bold px-1.5 py-0.5 rounded">切り上げ</span>
-            </div>
-            <p class="text-lg font-black text-pink-600">¥{{ mayumiShare.toLocaleString() }}</p>
-            <p class="text-[10px] text-slate-400 mt-0.5">実担当額: ¥{{ mayumiSum.toLocaleString() }}</p>
-          </div>
-        </div>
-      </section>
-
-      <!-- タブ切り替え -->
-      <div class="flex bg-slate-200/70 p-1 rounded-xl text-xs font-bold">
-        <button @click="currentTab = 'expense'" :class="currentTab === 'expense' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'" class="flex-1 py-2 rounded-lg transition">
-          支出 ({{ expenseItems.length }})
-        </button>
-        <button @click="currentTab = 'income'" :class="currentTab === 'income' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'" class="flex-1 py-2 rounded-lg transition">
-          収入 ({{ incomeItems.length }})
-        </button>
-        <button @click="currentTab = 'extra'" :class="currentTab === 'extra' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'" class="flex-1 py-2 rounded-lg transition">
-          繰越・都度出費
-        </button>
-      </div>
-
-      <!-- 未入力時のガイドカード -->
-      <div v-if="items.length === 0" class="bg-blue-50 border border-blue-200 p-4 rounded-xl text-center space-y-2 text-xs">
-        <p class="font-bold text-blue-900">この月のデータはまだ登録されていません</p>
-        <p class="text-slate-600 text-[11px]">右上の「🔄 初期値に合わせる」を押すと、テンプレート項目を一括読み込みできます。</p>
-        <button @click="resetToTemplate" class="bg-blue-600 text-white font-bold px-4 py-2 rounded-lg shadow hover:bg-blue-700 transition mt-2">
-          🔄 初期値（テンプレート）を読み込む
-        </button>
-      </div>
-
-      <!-- 明細リスト -->
-      <section v-else class="space-y-2.5">
-        
-        <!-- 支出リスト ＆ ドーナツグラフ -->
-        <div v-show="currentTab === 'expense'" class="space-y-3">
-          <div class="bg-white p-4 rounded-xl shadow-sm border border-slate-200">
-            <h3 class="text-xs font-bold text-slate-600 mb-2 text-center">📊 今月の支出内訳</h3>
-            <div class="relative h-44 w-full">
-              <canvas ref="donutChartRef"></canvas>
-            </div>
-          </div>
-
-          <div class="space-y-2">
-            <div v-for="item in expenseItems" :key="item.id" class="bg-white p-3 rounded-xl shadow-sm border border-slate-200/70 flex items-center justify-between gap-2">
-              <div class="flex-1 min-w-0">
-                <div class="flex items-center space-x-1.5 mb-1">
-                  <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{{ item.category }}</span>
-                  <span class="text-xs font-bold text-slate-800 truncate">{{ item.title }}</span>
-                </div>
-                <div class="flex items-center space-x-1">
-                  <button @click="togglePayer(item)" 
-                    :class="{
-                      'bg-blue-50 text-blue-600 border-blue-200': item.payer === '慶吾',
-                      'bg-pink-50 text-pink-600 border-pink-200': item.payer === '麻由美',
-                      'bg-slate-100 text-slate-600 border-slate-200': item.payer === '共通'
-                    }"
-                    class="text-[10px] font-bold px-2 py-0.5 rounded-full border transition active:scale-95">
-                    担当: {{ item.payer }}
-                  </button>
-                </div>
-              </div>
-              <div class="flex items-center space-x-2">
-                <span class="text-xs font-bold text-slate-400">¥</span>
-                <input type="number" v-model.number="item.amount" @change="saveItem(item)"
-                  class="w-24 p-1.5 border rounded-lg text-right font-bold text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-blue-500 outline-none">
-                <button @click="deleteItem(item.id)" class="text-slate-300 hover:text-rose-500 text-xs px-1">✕</button>
-              </div>
-            </div>
-          </div>
-        </div>
-
-        <!-- 収入リスト -->
-        <div v-show="currentTab === 'income'" class="space-y-2">
-          <div v-for="item in incomeItems" :key="item.id" class="bg-white p-3 rounded-xl shadow-sm border border-slate-200/70 flex items-center justify-between gap-2">
-            <div>
-              <span class="text-xs font-bold text-slate-800 block">{{ item.title }}</span>
-              <span class="text-[10px] text-slate-400">手取り金額</span>
-            </div>
-            <div class="flex items-center space-x-2">
-              <span class="text-xs font-bold text-slate-400">¥</span>
-              <input type="number" v-model.number="item.amount" @change="saveItem(item)"
-                class="w-28 p-1.5 border rounded-lg text-right font-bold text-sm bg-slate-50 focus:bg-white focus:ring-2 focus:ring-emerald-500 outline-none">
-              <button @click="deleteItem(item.id)" class="text-slate-300 hover:text-rose-500 text-xs px-1">✕</button>
-            </div>
-          </div>
-        </div>
-
-        <!-- 繰越・都度出費リスト -->
-        <div v-show="currentTab === 'extra'" class="space-y-4">
-          <!-- 繰越金管理ブロック -->
-          <div class="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200 space-y-3">
-            <div class="flex justify-between items-center border-b pb-2">
-              <h3 class="text-xs font-bold text-indigo-900">💰 繰越金（予算の余り）</h3>
-              <span class="text-[10px] text-slate-400">貯金に合算</span>
-            </div>
-            <div class="space-y-2">
-              <div v-for="item in carryoverItems" :key="item.id" class="flex items-center justify-between bg-slate-50 p-2 rounded-lg border text-xs">
-                <div>
-                  <span class="text-[10px] text-slate-500 block mb-0.5">名目・メモ</span>
-                  <span class="font-bold text-slate-700">{{ item.title }}</span>
-                  <span class="text-[10px] ml-2 px-1.5 py-0.5 rounded bg-indigo-100 text-indigo-700 font-bold">合算先: {{ item.payer }}</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <span class="font-extrabold text-emerald-600">+¥{{ Number(item.amount).toLocaleString() }}</span>
-                  <button @click="deleteItem(item.id)" class="text-slate-300 hover:text-rose-500 text-xs px-1">✕</button>
-                </div>
-              </div>
-              <div v-if="carryoverItems.length === 0" class="text-center text-xs text-slate-400 py-1">登録された繰越金はありません</div>
-            </div>
-
-            <form @submit.prevent="addCarryoverItem" class="pt-2 border-t border-slate-100 space-y-2">
-              <div class="grid grid-cols-2 gap-2 text-xs">
-                <input type="text" v-model="newCarryover.title" placeholder="名目 (例: 1月食費の余り)" required class="p-2 border rounded-lg">
-                <input type="number" v-model.number="newCarryover.amount" placeholder="金額" required class="p-2 border rounded-lg">
-              </div>
-              <div class="flex items-center space-x-2 text-xs">
-                <span class="text-slate-500 font-bold whitespace-nowrap">合算先:</span>
-                <select v-model="newCarryover.payer" class="p-1.5 border rounded-lg bg-white font-bold text-indigo-600 w-full">
-                  <option>使用可</option>
-                  <option>使用不可</option>
-                </select>
-                <button type="submit" class="bg-indigo-600 text-white font-bold px-4 py-1.5 rounded-lg whitespace-nowrap">追加</button>
-              </div>
-            </form>
-          </div>
-
-          <!-- 都度出費管理ブロック -->
-          <div class="bg-white p-3.5 rounded-xl shadow-sm border border-slate-200 space-y-3">
-            <div class="flex justify-between items-center border-b pb-2">
-              <h3 class="text-xs font-bold text-rose-800">💸 都度出費（臨時支出）</h3>
-              <span class="text-[10px] text-slate-400">貯金から差引</span>
-            </div>
-            <div class="space-y-2">
-              <div v-for="item in extraExpenseItems" :key="item.id" class="flex items-center justify-between bg-slate-50 p-2 rounded-lg border text-xs">
-                <div>
-                  <span class="text-[10px] text-slate-500 block mb-0.5">名目・メモ</span>
-                  <span class="font-bold text-slate-700">{{ item.title }}</span>
-                  <span class="text-[10px] ml-2 px-1.5 py-0.5 rounded bg-rose-100 text-rose-700 font-bold">合算先: {{ item.payer }}</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <span class="font-extrabold text-rose-500">-¥{{ Number(item.amount).toLocaleString() }}</span>
-                  <button @click="deleteItem(item.id)" class="text-slate-300 hover:text-rose-500 text-xs px-1">✕</button>
-                </div>
-              </div>
-              <div v-if="extraExpenseItems.length === 0" class="text-center text-xs text-slate-400 py-1">登録された都度出費はありません</div>
-            </div>
-
-            <form @submit.prevent="addExtraExpenseItem" class="pt-2 border-t border-slate-100 space-y-2">
-              <div class="grid grid-cols-2 gap-2 text-xs">
-                <input type="text" v-model="newExtra.title" placeholder="名目 (例: 冠婚葬祭)" required class="p-2 border rounded-lg">
-                <input type="number" v-model.number="newExtra.amount" placeholder="金額" required class="p-2 border rounded-lg">
-              </div>
-              <div class="flex items-center space-x-2 text-xs">
-                <span class="text-slate-500 font-bold whitespace-nowrap">合算先:</span>
-                <select v-model="newExtra.payer" class="p-1.5 border rounded-lg bg-white font-bold text-rose-600 w-full">
-                  <option>使用可</option>
-                  <option>使用不可</option>
-                </select>
-                <button type="submit" class="bg-rose-600 text-white font-bold px-4 py-1.5 rounded-lg whitespace-nowrap">追加</button>
-              </div>
-            </form>
-          </div>
-        </div>
-
-        <!-- 新規項目追加ボタン -->
-        <div class="pt-2">
-          <button v-if="!showAddForm" @click="showAddForm = true" class="w-full py-2.5 border-2 border-dashed border-slate-300 text-slate-500 rounded-xl text-xs font-bold hover:bg-slate-100 transition">
-            ＋ 新しい項目を追加する
-          </button>
-
-          <form v-else @submit.prevent="addNewItem" class="bg-white p-3.5 rounded-xl border border-slate-300 shadow-sm space-y-3">
-            <div class="grid grid-cols-2 gap-2 text-xs">
-              <input type="text" v-model="newItem.title" placeholder="項目名" required class="p-2 border rounded-lg">
-              <input type="number" v-model.number="newItem.amount" placeholder="金額" required class="p-2 border rounded-lg">
-            </div>
-            <div class="grid grid-cols-3 gap-2 text-xs">
-              <select v-model="newItem.type" class="p-2 border rounded-lg bg-white">
-                <option value="expense">支出</option>
-                <option value="income">収入</option>
-              </select>
-              <select v-model="newItem.category" class="p-2 border rounded-lg bg-white">
-                <option>共用費</option>
-                <option>必要経費</option>
-                <option>サブスク</option>
-                <option>投資</option>
-                <option>その他</option>
-              </select>
-              <select v-model="newItem.payer" class="p-2 border rounded-lg bg-white">
-                <option>慶吾</option>
-                <option>麻由美</option>
-                <option>共通</option>
-              </select>
-            </div>
-            <div class="flex gap-2 text-xs font-bold">
-              <button type="submit" class="flex-1 bg-blue-600 text-white py-2 rounded-lg">追加</button>
-              <button type="button" @click="showAddForm = false" class="bg-slate-200 text-slate-600 px-3 py-2 rounded-lg">キャンセル</button>
-            </div>
-          </form>
-        </div>
-
       </section>
     </main>
 
-    <!-- モーダル -->
-    <div v-if="showTemplateModal" class="fixed inset-0 bg-black/50 z-50 flex items-center justify-center p-4">
-      <div class="bg-white rounded-2xl w-full max-w-md max-h-[90vh] flex flex-col shadow-2xl overflow-hidden">
-        <div class="p-4 bg-slate-800 text-white flex justify-between items-center">
-          <h2 class="font-bold text-sm">⚙️ 設定・テンプレート</h2>
-          <button @click="closeTemplateModal" class="text-slate-400 hover:text-white font-bold text-lg">✕</button>
-        </div>
-        <div class="p-4 flex-1 overflow-y-auto space-y-4">
-          <div class="bg-emerald-50 p-3 rounded-xl border border-emerald-200 text-xs space-y-2">
-            <label class="font-bold text-emerald-900 block">🎯 貯金目標（貯金[使用可]の累計で計算）</label>
-            <div class="grid grid-cols-2 gap-2">
-              <input type="text" v-model="targetName" @change="saveSettings" placeholder="目標名" class="p-2 border rounded-lg bg-white">
-              <input type="number" v-model.number="targetAmount" @change="saveSettings" placeholder="目標金額" class="p-2 border rounded-lg bg-white">
+    <!-- ═════════ 画面2: 明細 ═════════ -->
+    <main v-else-if="currentScreen === 'detail'" class="page" key="detail">
+      <div class="seg">
+        <button id="tab-expense" :class="{ on: currentTab === 'expense' }" @click="currentTab = 'expense'">支出</button>
+        <button id="tab-income" :class="{ on: currentTab === 'income' }" @click="currentTab = 'income'">収入</button>
+        <button id="tab-extra" :class="{ on: currentTab === 'extra' }" @click="currentTab = 'extra'">繰越・都度</button>
+      </div>
+
+      <div v-if="items.length === 0" class="sheet empty">
+        <p>この月はまだ記録がありません</p>
+        <button class="btn" @click="resetToTemplate">テンプレートから作成</button>
+      </div>
+
+      <template v-else>
+        <!-- 支出 -->
+        <template v-if="currentTab === 'expense'">
+          <section class="sheet">
+            <div class="sheet-title"><span>カテゴリ別</span><small class="num">合計 ¥{{ fmt(expenseRawTotal) }}</small></div>
+            <div class="donut-box">
+              <canvas ref="donutChartRef"></canvas>
+              <div class="donut-center"><span>支出</span><b class="num">¥{{ fmtMan(expenseRawTotal) }}</b></div>
             </div>
-          </div>
-
-          <div class="bg-indigo-50 p-3 rounded-xl border border-indigo-200 text-xs space-y-2">
-            <label class="font-bold text-indigo-900 block">💰 貯金（使用可）の割り当て割合</label>
-            <div class="flex items-center space-x-2">
-              <input type="number" v-model.number="usableRatio" @change="saveSettings" min="0" max="100" class="w-20 p-1.5 border rounded-lg text-center font-bold bg-white">
-              <span class="text-slate-600 font-bold">%（使用不可は {{ 100 - usableRatio }}%）</span>
-            </div>
-          </div>
-
-          <p class="text-xs text-slate-500 font-bold mt-4 border-t pt-2">初期値（テンプレート）の編集</p>
-          <div class="flex bg-slate-200/70 p-1 rounded-xl text-xs font-bold mb-3">
-            <button @click="currentTemplateTab = 'expense'" :class="currentTemplateTab === 'expense' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'" class="flex-1 py-2 rounded-lg transition">
-              支出 ({{ templateExpenseItems.length }})
-            </button>
-            <button @click="currentTemplateTab = 'income'" :class="currentTemplateTab === 'income' ? 'bg-white text-slate-800 shadow-sm' : 'text-slate-500'" class="flex-1 py-2 rounded-lg transition">
-              収入 ({{ templateIncomeItems.length }})
-            </button>
-          </div>
-
-          <section class="space-y-2.5 bg-slate-100 p-3 rounded-xl border border-slate-200">
-            <div v-if="currentTemplateTab === 'expense'" class="space-y-2">
-              <div v-for="item in templateExpenseItems" :key="item.id" class="bg-white p-3 rounded-xl shadow-sm border border-slate-200/70 flex items-center justify-between gap-2">
-                <div class="flex-1 min-w-0">
-                  <div class="flex items-center space-x-1.5 mb-1">
-                    <span class="text-[10px] font-bold px-1.5 py-0.5 rounded bg-slate-100 text-slate-500">{{ item.category }}</span>
-                    <span class="text-xs font-bold text-slate-800 truncate">{{ item.title }}</span>
-                  </div>
-                  <button @click="toggleTemplatePayer(item)" 
-                    :class="{
-                      'bg-blue-50 text-blue-600 border-blue-200': item.payer === '慶吾',
-                      'bg-pink-50 text-pink-600 border-pink-200': item.payer === '麻由美',
-                      'bg-slate-100 text-slate-600 border-slate-200': item.payer === '共通'
-                    }"
-                    class="text-[10px] font-bold px-2 py-0.5 rounded-full border transition active:scale-95">
-                    担当: {{ item.payer }}
-                  </button>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <span class="text-xs font-bold text-slate-400">¥</span>
-                  <input type="number" v-model.number="item.amount" @change="saveTemplateItem(item)"
-                    class="w-24 p-1.5 border rounded-lg text-right font-bold text-sm bg-slate-50 focus:bg-white border-slate-300 outline-none">
-                  <button @click="deleteTemplateItem(item.id)" class="text-slate-300 hover:text-rose-500 text-xs px-1">✕</button>
-                </div>
+            <div class="rows" style="margin-top: 10px">
+              <div v-for="c in categoryBreakdown" :key="c.name" class="row">
+                <div class="row-label"><span class="dot" :style="{ background: c.color }"></span><span class="title">{{ c.name }}</span></div>
+                <div class="row-val num">¥{{ fmt(c.value) }}<span class="pct">{{ c.pct.toFixed(0) }}%</span></div>
               </div>
-            </div>
-
-            <div v-if="currentTemplateTab === 'income'" class="space-y-2">
-              <div v-for="item in templateIncomeItems" :key="item.id" class="bg-white p-3 rounded-xl shadow-sm border border-slate-200/70 flex items-center justify-between gap-2">
-                <div>
-                  <span class="text-xs font-bold text-slate-800 block">{{ item.title }}</span>
-                  <span class="text-[10px] text-slate-400">手取り金額</span>
-                </div>
-                <div class="flex items-center space-x-2">
-                  <span class="text-xs font-bold text-slate-400">¥</span>
-                  <input type="number" v-model.number="item.amount" @change="saveTemplateItem(item)"
-                    class="w-28 p-1.5 border rounded-lg text-right font-bold text-sm bg-slate-50 focus:bg-white border-slate-300 outline-none">
-                  <button @click="deleteTemplateItem(item.id)" class="text-slate-300 hover:text-rose-500 text-xs px-1">✕</button>
-                </div>
-              </div>
-            </div>
-
-            <div class="pt-2 border-t border-slate-200 mt-2">
-              <button v-if="!showAddTempForm" @click="showAddTempForm = true" class="w-full py-2.5 border-2 border-dashed border-slate-300 text-slate-500 rounded-xl text-xs font-bold hover:bg-slate-100 transition">
-                ＋ テンプレートを追加する
-              </button>
-
-              <form v-else @submit.prevent="addTemplateItem" class="bg-white p-3.5 rounded-xl border border-slate-300 shadow-sm space-y-3">
-                <div class="grid grid-cols-2 gap-2 text-xs">
-                  <input type="text" v-model="newTemp.title" placeholder="項目名" required class="p-2 border rounded-lg">
-                  <input type="number" v-model.number="newTemp.amount" placeholder="金額" required class="p-2 border rounded-lg">
-                </div>
-                <div class="grid grid-cols-3 gap-2 text-xs">
-                  <select v-model="newTemp.type" class="p-2 border rounded-lg bg-white">
-                    <option value="expense">支出</option>
-                    <option value="income">収入</option>
-                  </select>
-                  <select v-model="newTemp.category" class="p-2 border rounded-lg bg-white">
-                    <option>共用費</option>
-                    <option>必要経費</option>
-                    <option>サブスク</option>
-                    <option>投資</option>
-                    <option>その他</option>
-                  </select>
-                  <select v-model="newTemp.payer" class="p-2 border rounded-lg bg-white">
-                    <option>慶吾</option>
-                    <option>麻由美</option>
-                    <option>共通</option>
-                  </select>
-                </div>
-                <div class="flex gap-2 text-xs font-bold">
-                  <button type="submit" class="flex-1 bg-slate-800 text-white py-2 rounded-lg">追加</button>
-                  <button type="button" @click="showAddTempForm = false" class="bg-slate-200 text-slate-600 px-3 py-2 rounded-lg">キャンセル</button>
-                </div>
-              </form>
             </div>
           </section>
 
-          <!-- Firebase同期設定 -->
-          <div class="bg-amber-50 p-3 rounded-xl border border-amber-200 text-xs space-y-2 mt-4">
-            <label class="font-bold text-amber-900 block">🔗 Firebase同期（複数端末でデータ共有）</label>
-            <div class="space-y-2">
-              <input type="text" v-model="firebaseUrl" placeholder="Firebase Realtime DB URL" class="w-full p-2 border rounded-lg bg-white text-xs font-mono">
-              <div class="flex gap-2">
-                <button type="button" @click="saveFirebaseUrl" class="flex-1 bg-amber-600 text-white font-bold py-1.5 rounded-lg">URL保存</button>
-                <button type="button" @click="uploadDataToFirebase" class="flex-1 bg-amber-500 text-white font-bold py-1.5 rounded-lg">データをアップロード</button>
+          <section class="sheet">
+            <div class="sheet-title"><span>項目</span><small>担当をタップで切替</small></div>
+            <template v-for="group in expenseGroups" :key="group.name">
+              <div class="cat-head"><span>{{ group.name }}</span><span class="num">¥{{ fmt(group.total) }}</span></div>
+              <div v-for="item in group.items" :key="item.id" class="item">
+                <div class="body">
+                  <span class="title">{{ item.title }}</span>
+                  <button class="chip" :class="payerClass(item.payer)" @click="togglePayer(item)">{{ item.payer }}</button>
+                </div>
+                <input type="number" inputmode="numeric" class="amount-input" v-model.number="item.amount" @change="saveItem(item)">
+                <button class="del" @click="deleteItem(item.id)" aria-label="削除">×</button>
               </div>
-              <p class="text-[10px] text-amber-700">{{ firebaseStatus }}</p>
+            </template>
+
+            <button v-if="!showAddForm" id="show-add-form" class="btn ghost full" style="margin-top: 12px" @click="openAddForm('expense')">＋ 項目を追加</button>
+          </section>
+        </template>
+
+        <!-- 収入 -->
+        <section v-if="currentTab === 'income'" class="sheet">
+          <div class="sheet-title"><span>収入（手取り）</span><small class="num">合計 ¥{{ fmt(totalIncome) }}</small></div>
+          <div v-for="item in incomeItems" :key="item.id" class="item">
+            <div class="body"><span class="title">{{ item.title }}</span></div>
+            <input type="number" inputmode="numeric" class="amount-input" v-model.number="item.amount" @change="saveItem(item)">
+            <button class="del" @click="deleteItem(item.id)" aria-label="削除">×</button>
+          </div>
+          <button v-if="!showAddForm" class="btn ghost full" style="margin-top: 12px" @click="openAddForm('income')">＋ 項目を追加</button>
+        </section>
+
+        <!-- 追加フォーム -->
+        <section v-if="showAddForm && currentTab !== 'extra'" class="sheet">
+          <div class="sheet-title"><span>項目を追加</span></div>
+          <form @submit.prevent="addNewItem" class="form" style="border: none; margin: 0; padding: 0">
+            <div class="cols">
+              <input id="new-item-title" class="field" type="text" v-model="newItem.title" placeholder="項目名" required>
+              <input id="new-item-amount" class="field num" type="number" inputmode="numeric" v-model.number="newItem.amount" placeholder="金額" required>
+            </div>
+            <div class="cols3">
+              <select class="field" v-model="newItem.type">
+                <option value="expense">支出</option>
+                <option value="income">収入</option>
+              </select>
+              <select class="field" v-model="newItem.category">
+                <option v-for="c in CATEGORIES" :key="c">{{ c }}</option>
+              </select>
+              <select class="field" v-model="newItem.payer">
+                <option>慶吾</option><option>麻由美</option><option>共通</option>
+              </select>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn sub" @click="showAddForm = false">やめる</button>
+              <button id="submit-new-item" type="submit" class="btn">追加</button>
+            </div>
+          </form>
+        </section>
+
+        <!-- 繰越・都度 -->
+        <template v-if="currentTab === 'extra'">
+          <section class="sheet">
+            <div class="sheet-title"><span>繰越金（予算の余り）</span><small class="num" style="color: var(--usable)">+¥{{ fmt(carryoverUsableSum + carryoverUnusableSum) }}</small></div>
+            <div v-for="item in carryoverItems" :key="item.id" class="item">
+              <div class="body">
+                <span class="title">{{ item.title }}</span>
+                <span class="chip" :class="item.payer === '使用可' ? 'usable' : 'unusable'">{{ item.payer }}</span>
+              </div>
+              <span class="row-val num" style="color: var(--usable)">+¥{{ fmt(item.amount) }}</span>
+              <button class="del" @click="deleteItem(item.id)" aria-label="削除">×</button>
+            </div>
+            <p v-if="carryoverItems.length === 0" class="note">まだありません</p>
+            <form @submit.prevent="addCarryoverItem" class="form">
+              <div class="cols">
+                <input class="field" type="text" v-model="newCarryover.title" placeholder="名目（例: 食費の余り）" required>
+                <input class="field num" type="number" inputmode="numeric" v-model.number="newCarryover.amount" placeholder="金額" required>
+              </div>
+              <div class="btn-row">
+                <select class="field" v-model="newCarryover.payer" style="flex: 1"><option>使用可</option><option>使用不可</option></select>
+                <button id="add-carryover" type="submit" class="btn">追加</button>
+              </div>
+            </form>
+          </section>
+
+          <section class="sheet">
+            <div class="sheet-title"><span>都度出費（臨時の支出）</span><small class="num" style="color: var(--expense)">−¥{{ fmt(extraUsableSum + extraUnusableSum) }}</small></div>
+            <div v-for="item in extraExpenseItems" :key="item.id" class="item">
+              <div class="body">
+                <span class="title">{{ item.title }}</span>
+                <span class="chip" :class="item.payer === '使用可' ? 'usable' : 'unusable'">{{ item.payer }}</span>
+              </div>
+              <span class="row-val num" style="color: var(--expense)">−¥{{ fmt(item.amount) }}</span>
+              <button class="del" @click="deleteItem(item.id)" aria-label="削除">×</button>
+            </div>
+            <p v-if="extraExpenseItems.length === 0" class="note">まだありません</p>
+            <form @submit.prevent="addExtraExpenseItem" class="form">
+              <div class="cols">
+                <input class="field" type="text" v-model="newExtra.title" placeholder="名目（例: 冠婚葬祭）" required>
+                <input class="field num" type="number" inputmode="numeric" v-model.number="newExtra.amount" placeholder="金額" required>
+              </div>
+              <div class="btn-row">
+                <select class="field" v-model="newExtra.payer" style="flex: 1"><option>使用可</option><option>使用不可</option></select>
+                <button id="add-extra" type="submit" class="btn">追加</button>
+              </div>
+            </form>
+          </section>
+
+          <!-- 貯金の内訳 -->
+          <section class="sheet">
+            <div class="sheet-title"><span>貯金の内訳</span></div>
+            <table class="months num">
+              <thead><tr><th></th><th>使用可</th><th>使用不可</th></tr></thead>
+              <tbody>
+                <tr><td>ベース</td><td>¥{{ fmt(baseSavingsUsable) }}</td><td>¥{{ fmt(baseSavingsUnusable) }}</td></tr>
+                <tr><td>＋ 繰越</td><td>¥{{ fmt(carryoverUsableSum) }}</td><td>¥{{ fmt(carryoverUnusableSum) }}</td></tr>
+                <tr><td>− 都度</td><td>¥{{ fmt(extraUsableSum) }}</td><td>¥{{ fmt(extraUnusableSum) }}</td></tr>
+                <tr class="current"><td>合計</td><td>¥{{ fmt(savingsUsable) }}</td><td>¥{{ fmt(savingsUnusable) }}</td></tr>
+              </tbody>
+            </table>
+          </section>
+        </template>
+
+        <button id="reset-template" class="btn ghost full" @click="resetToTemplate">この月をテンプレートで作り直す</button>
+      </template>
+    </main>
+
+    <!-- ═════════ 画面3: 推移 ═════════ -->
+    <main v-else class="page" key="trend">
+      <div v-if="isSummaryLoading && allMonthsSummary.length === 0" class="sheet empty">読み込み中…</div>
+
+      <!-- 累計貯金 -->
+      <section class="sheet hero">
+        <div class="hero-label">これまでの貯金（累計）</div>
+        <div class="hero-amount num"><span class="yen">¥</span>{{ fmt(totalCumulativeSavings) }}</div>
+        <div class="split-bar">
+          <div :style="{ width: pctOf(Math.max(totalCumulativeUsableSavings,0), Math.max(totalCumulativeUsableSavings,0) + Math.max(totalCumulativeUnusableSavings,0)) + '%', background: 'var(--usable)' }"></div>
+          <div :style="{ width: pctOf(Math.max(totalCumulativeUnusableSavings,0), Math.max(totalCumulativeUsableSavings,0) + Math.max(totalCumulativeUnusableSavings,0)) + '%', background: 'var(--unusable)' }"></div>
+        </div>
+        <div class="legend">
+          <div class="legend-item"><span class="dot" style="background: var(--usable)"></span>使用可 <span class="val num">¥{{ fmt(totalCumulativeUsableSavings) }}</span></div>
+          <div class="legend-item"><span class="dot" style="background: var(--unusable)"></span>使用不可 <span class="val num">¥{{ fmt(totalCumulativeUnusableSavings) }}</span></div>
+        </div>
+      </section>
+
+      <!-- 年間 -->
+      <section class="sheet">
+        <div class="sheet-title"><span>{{ currentYear }}年</span><small>{{ yearlySummary.months }}か月分</small></div>
+        <div class="stat-pair">
+          <div class="stat"><div class="label">収入</div><div class="value num">¥{{ fmt(yearlySummary.income) }}</div></div>
+          <div class="stat"><div class="label">貯金</div><div class="value num" :class="{ neg: yearlySummary.savings < 0 }">¥{{ fmt(yearlySummary.savings) }}</div></div>
+        </div>
+        <div class="note num" style="margin-top: 6px" v-if="yearlySummary.income > 0">貯金率 {{ (yearlySummary.savings / yearlySummary.income * 100).toFixed(1) }}%　／　月平均 ¥{{ fmt(Math.round(yearlySummary.savings / Math.max(1, yearlySummary.months))) }}</div>
+      </section>
+
+      <!-- グラフ -->
+      <section class="sheet">
+        <div class="seg small">
+          <button id="chart-monthly" :class="{ on: selectedChartType === 'savings_monthly' }" @click="selectedChartType = 'savings_monthly'">月ごとの貯金</button>
+          <button id="chart-cumulative" :class="{ on: selectedChartType === 'savings_cumulative' }" @click="selectedChartType = 'savings_cumulative'">累計の伸び</button>
+          <button id="chart-extra" :class="{ on: selectedChartType === 'extra_flow' }" @click="selectedChartType = 'extra_flow'">繰越・都度</button>
+        </div>
+        <div class="chart-box"><canvas ref="trendChartRef"></canvas></div>
+      </section>
+
+      <!-- 月別一覧 -->
+      <section class="sheet">
+        <div class="sheet-title"><span>月別</span><small>タップでその月へ</small></div>
+        <table class="months num">
+          <thead><tr><th>月</th><th>収入</th><th>支出</th><th>貯金</th></tr></thead>
+          <tbody>
+            <tr v-for="row in monthsDesc" :key="row.month" class="click" :class="{ current: row.month === selectedMonth }" @click="jumpToMonth(row.month)">
+              <td>{{ row.month.replace('-', '/') }}</td>
+              <td>{{ fmtMan(row.income) }}</td>
+              <td>{{ fmtMan(row.expense) }}</td>
+              <td :class="{ neg: row.savings < 0 }">{{ fmtMan(row.savings) }}</td>
+            </tr>
+          </tbody>
+        </table>
+        <p class="note" style="margin-top: 8px">単位: 万円</p>
+      </section>
+
+      <!-- 設定 -->
+      <section class="sheet">
+        <details class="settings">
+          <summary>目標と貯金の割合</summary>
+          <div class="form" style="border: none; margin: 0; padding: 0">
+            <div class="cols">
+              <input id="target-name" class="field" type="text" v-model="targetName" @change="saveSettings" placeholder="目標名">
+              <input id="target-amount" class="field num" type="number" inputmode="numeric" v-model.number="targetAmount" @change="saveSettings" placeholder="目標金額">
+            </div>
+            <div class="btn-row" style="align-items: center">
+              <span class="note" style="flex: none">使用可の割合</span>
+              <input id="usable-ratio" class="field num" type="number" min="0" max="100" v-model.number="usableRatio" @change="saveSettings" style="width: 80px; flex: none; text-align: center">
+              <span class="note">%（使用不可 {{ 100 - usableRatio }}%）</span>
             </div>
           </div>
+        </details>
+      </section>
 
-        </div>
-        <div class="p-3 bg-slate-100 border-t text-right">
-          <button @click="closeTemplateModal" class="bg-indigo-600 text-white font-bold px-4 py-2 rounded-xl text-xs">設定を閉じる</button>
-        </div>
+      <section class="sheet">
+        <details class="settings">
+          <summary>テンプレート（毎月の初期値）</summary>
+          <div class="seg small">
+            <button :class="{ on: currentTemplateTab === 'expense' }" @click="currentTemplateTab = 'expense'">支出 {{ templateExpenseItems.length }}</button>
+            <button :class="{ on: currentTemplateTab === 'income' }" @click="currentTemplateTab = 'income'">収入 {{ templateIncomeItems.length }}</button>
+          </div>
+          <div v-for="item in (currentTemplateTab === 'expense' ? templateExpenseItems : templateIncomeItems)" :key="item.id" class="item">
+            <div class="body">
+              <span class="title">{{ item.title }}</span>
+              <span v-if="item.type === 'expense'">
+                <span class="row-sub">{{ item.category }}　</span>
+                <button class="chip" :class="payerClass(item.payer)" @click="toggleTemplatePayer(item)">{{ item.payer }}</button>
+              </span>
+            </div>
+            <input type="number" inputmode="numeric" class="amount-input" v-model.number="item.amount" @change="saveTemplateItem(item)">
+            <button class="del" @click="deleteTemplateItem(item.id)" aria-label="削除">×</button>
+          </div>
+
+          <button v-if="!showAddTempForm" class="btn ghost full" style="margin-top: 12px" @click="showAddTempForm = true">＋ テンプレートに追加</button>
+          <form v-else @submit.prevent="addTemplateItem" class="form">
+            <div class="cols">
+              <input class="field" type="text" v-model="newTemp.title" placeholder="項目名" required>
+              <input class="field num" type="number" inputmode="numeric" v-model.number="newTemp.amount" placeholder="金額" required>
+            </div>
+            <div class="cols3">
+              <select class="field" v-model="newTemp.type"><option value="expense">支出</option><option value="income">収入</option></select>
+              <select class="field" v-model="newTemp.category"><option v-for="c in CATEGORIES" :key="c">{{ c }}</option></select>
+              <select class="field" v-model="newTemp.payer"><option>慶吾</option><option>麻由美</option><option>共通</option></select>
+            </div>
+            <div class="btn-row">
+              <button type="button" class="btn sub" @click="showAddTempForm = false">やめる</button>
+              <button type="submit" class="btn">追加</button>
+            </div>
+          </form>
+        </details>
+      </section>
+
+      <section class="sheet">
+        <details class="settings">
+          <summary>データ同期（Firebase）</summary>
+          <div class="form" style="border: none; margin: 0; padding: 0">
+            <input id="firebase-url" class="field" type="text" v-model="firebaseUrl" placeholder="Firebase Realtime DB URL" style="font-size: 12px">
+            <div class="btn-row">
+              <button type="button" class="btn sub" @click="saveFirebaseUrl">URL保存</button>
+              <button type="button" class="btn sub" @click="uploadDataToFirebase">アップロード</button>
+            </div>
+            <p class="note">{{ firebaseStatus }}</p>
+          </div>
+        </details>
+      </section>
+    </main>
+
+    <!-- 下部ナビ -->
+    <nav class="nav" aria-label="画面切替">
+      <div class="nav-inner">
+        <button id="nav-month" :class="{ on: currentScreen === 'month' }" @click="currentScreen = 'month'">
+          <svg viewBox="0 0 24 24"><path d="M4 5.5A1.5 1.5 0 0 1 5.5 4H11v16H5.5A1.5 1.5 0 0 1 4 18.5z"/><path d="M13 4h5.5A1.5 1.5 0 0 1 20 5.5v13a1.5 1.5 0 0 1-1.5 1.5H13z"/></svg>
+          今月
+        </button>
+        <button id="nav-detail" :class="{ on: currentScreen === 'detail' }" @click="currentScreen = 'detail'">
+          <svg viewBox="0 0 24 24"><path d="M8 6h12M8 12h12M8 18h12"/><circle cx="4" cy="6" r="1"/><circle cx="4" cy="12" r="1"/><circle cx="4" cy="18" r="1"/></svg>
+          明細
+        </button>
+        <button id="nav-trend" :class="{ on: currentScreen === 'trend' }" @click="currentScreen = 'trend'">
+          <svg viewBox="0 0 24 24"><path d="M3 20h18"/><path d="M5 16l4-5 4 3 6-8"/></svg>
+          推移
+        </button>
       </div>
-    </div>
+    </nav>
 
   </div>
 
@@ -561,15 +732,32 @@
       db.loadInitialData(INITIAL_DATA);
     }
 
+    // テーマ（CSS変数）から色を取得
+    const cssVar = (name) => getComputedStyle(document.documentElement).getPropertyValue(name).trim();
+    const themeColors = () => ({
+      usable: cssVar('--usable'), unusable: cssVar('--unusable'), expense: cssVar('--expense'),
+      line: cssVar('--line'), card: cssVar('--card'), sub: cssVar('--sub')
+    });
+    const applyChartDefaults = () => {
+      Chart.defaults.color = cssVar('--sub');
+      Chart.defaults.borderColor = cssVar('--line');
+    };
+    Chart.defaults.font.family = "'Zen Maru Gothic', sans-serif";
+    Chart.defaults.font.size = 12;
+    applyChartDefaults();
+    const CATEGORIES = ['共用費', '必要経費', 'サブスク', '投資', 'その他'];
+    const CATEGORY_COLORS = ['#d4a373', '#8fa9b8', '#b98fa8', '#a3b18a', '#6f6660'];
+    const RING_C = 2 * Math.PI * 48;
+
     createApp({
       setup() {
         const selectedMonth = ref(new Date().toISOString().substring(0, 7));
         const items = ref([]);
         const templateItems = ref([]);
+        const currentScreen = ref('month');
+        const theme = ref(document.documentElement.getAttribute('data-theme') || 'dark');
         const currentTab = ref('expense');
         const showAddForm = ref(false);
-        const showTemplateModal = ref(false);
-        const showSummarySection = ref(false);
         const errorMessage = ref('');
 
         const targetName = ref('ハワイ旅行');
@@ -581,7 +769,7 @@
 
         // Firebase同期
         const firebaseUrl = ref(db.getFirebaseUrl());
-        const firebaseStatus = ref(db.isFirebaseConfigured() ? '✅ Firebase接続済み' : '未設定（ローカルのみ）');
+        const firebaseStatus = ref(db.isFirebaseConfigured() ? '接続済み' : '未設定（この端末のみ）');
 
         const newItem = ref({ type: 'expense', category: '共用費', title: '', amount: null, payer: '共通' });
         const newCarryover = ref({ title: '', amount: null, payer: '使用可' });
@@ -597,7 +785,34 @@
         let trendChartInstance = null;
         let donutChartInstance = null;
 
+        // ── 表示ヘルパー ──
+        const fmt = (n) => (Number(n) || 0).toLocaleString();
+        const fmtMan = (n) => {
+          const v = (Number(n) || 0) / 10000;
+          return (Math.round(v * 10) / 10).toLocaleString(undefined, { minimumFractionDigits: 1, maximumFractionDigits: 1 });
+        };
+        const pctOf = (v, total) => total > 0 ? Math.max(0, Math.min(100, v / total * 100)) : 0;
+        const payerClass = (p) => p === '慶吾' ? 'keigo' : p === '麻由美' ? 'ayumi' : 'common';
+
         const currentYear = computed(() => selectedMonth.value.substring(0, 4));
+        const monthLabel = computed(() => {
+          const [y, m] = selectedMonth.value.split('-');
+          return `${y}年${Number(m)}月`;
+        });
+
+        const shiftMonth = (delta) => {
+          const [y, m] = selectedMonth.value.split('-').map(Number);
+          const d = new Date(y, m - 1 + delta, 1);
+          selectedMonth.value = `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}`;
+          fetchMonthData();
+        };
+
+        const jumpToMonth = (month) => {
+          selectedMonth.value = month;
+          fetchMonthData();
+          currentScreen.value = 'month';
+          window.scrollTo({ top: 0 });
+        };
 
         const fetchSettings = async () => {
           try {
@@ -629,8 +844,7 @@
                 date: 'settings', title: 'app_settings', category: targetName.value, amount: Number(targetAmount.value) || 0, payer: String(usableRatio.value), type: 'setting'
               }]);
             }
-            await fetchAllMonthsSummary();
-            if (showSummarySection.value) renderTrendChart();
+            await refreshSummary();
           } catch (e) { console.error('Settings save error:', e); }
         };
 
@@ -638,29 +852,30 @@
           await nextTick();
           if (!donutChartRef.value) return;
           if (donutChartInstance) donutChartInstance.destroy();
+          donutChartInstance = null;
 
-          const categories = ['共用費', '必要経費', 'サブスク', '投資', 'その他'];
-          const data = categories.map(c => expenseItems.value.filter(i => i.category === c).reduce((sum, i) => sum + (Number(i.amount) || 0), 0));
-          
+          const data = CATEGORIES.map(c => expenseItems.value.filter(i => i.category === c).reduce((sum, i) => sum + (Number(i.amount) || 0), 0));
           if (data.every(d => d === 0)) return;
 
           donutChartInstance = new Chart(donutChartRef.value, {
             type: 'doughnut',
             data: {
-              labels: categories,
-              datasets: [{
-                data: data,
-                backgroundColor: ['#6366f1', '#14b8a6', '#f59e0b', '#ec4899', '#94a3b8'],
-                borderWidth: 2,
-                borderColor: '#ffffff'
-              }]
+              labels: CATEGORIES,
+              datasets: [{ data, backgroundColor: CATEGORY_COLORS, borderWidth: 3, borderColor: cssVar('--card'), hoverOffset: 4 }]
             },
             options: {
-              responsive: true,
-              maintainAspectRatio: false,
-              plugins: { legend: { position: 'right', labels: { font: { size: 10 } } } }
+              responsive: true, maintainAspectRatio: false, cutout: '72%',
+              plugins: {
+                legend: { display: false },
+                tooltip: { callbacks: { label: (ctx) => ` ${ctx.label}: ¥${ctx.parsed.toLocaleString()}` } }
+              }
             }
           });
+        };
+
+        const yenTick = (v) => {
+          const abs = Math.abs(v);
+          return abs >= 10000 ? `${(v / 10000).toLocaleString()}万` : v.toLocaleString();
         };
 
         const renderTrendChart = async () => {
@@ -668,95 +883,58 @@
           if (!trendChartRef.value) return;
           if (trendChartInstance) trendChartInstance.destroy();
 
-          const labels = allMonthsSummary.value.map(m => m.month);
+          const COLORS = themeColors();
+          const rows = allMonthsSummary.value;
+          const labels = rows.map(m => `${Number(m.month.substring(5))}月`);
+          const fullLabels = rows.map(m => m.month.replace('-', '/'));
+          let type = 'bar';
           let datasets = [];
+          let stacked = false;
 
           if (selectedChartType.value === 'savings_monthly') {
+            stacked = true;
             datasets = [
-              {
-                label: '貯金 (使用可)',
-                data: allMonthsSummary.value.map(m => m.finalUsable),
-                borderColor: '#4f46e5',
-                backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointBackgroundColor: '#4f46e5'
-              },
-              {
-                label: '貯金 (使用不可)',
-                data: allMonthsSummary.value.map(m => m.finalUnusable),
-                borderColor: '#64748b',
-                backgroundColor: 'rgba(100, 116, 139, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointBackgroundColor: '#64748b'
-              }
+              { label: '使用可', data: rows.map(m => m.finalUsable), backgroundColor: COLORS.usable, borderRadius: 3, maxBarThickness: 22 },
+              { label: '使用不可', data: rows.map(m => m.finalUnusable), backgroundColor: COLORS.unusable, borderRadius: 3, maxBarThickness: 22 }
             ];
           } else if (selectedChartType.value === 'savings_cumulative') {
+            type = 'line';
+            stacked = true;
             datasets = [
-              {
-                label: '累積 貯金(使用可)',
-                data: allMonthsSummary.value.map(m => m.cumUsable),
-                borderColor: '#059669',
-                backgroundColor: 'rgba(5, 150, 105, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointBackgroundColor: '#059669'
-              },
-              {
-                label: '累積 貯金(使用不可)',
-                data: allMonthsSummary.value.map(m => m.cumUnusable),
-                borderColor: '#4f46e5',
-                backgroundColor: 'rgba(79, 70, 229, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointBackgroundColor: '#4f46e5'
-              },
-              {
-                label: '累積 合計',
-                data: allMonthsSummary.value.map(m => m.cumTotal),
-                borderColor: '#d97706',
-                borderDash: [4, 4],
-                fill: false,
-                tension: 0.3,
-                pointBackgroundColor: '#d97706'
-              }
+              { label: '使用可', data: rows.map(m => m.cumUsable), borderColor: COLORS.usable, backgroundColor: COLORS.usable + '59', fill: 'origin', tension: 0.3, pointRadius: 0, borderWidth: 2 },
+              { label: '使用不可', data: rows.map(m => m.cumUnusable), borderColor: COLORS.unusable, backgroundColor: COLORS.unusable + '4d', fill: '-1', tension: 0.3, pointRadius: 0, borderWidth: 2 }
             ];
-          } else if (selectedChartType.value === 'extra_flow') {
+          } else {
             datasets = [
-              {
-                label: '繰越金 (+)',
-                data: allMonthsSummary.value.map(m => m.carryover),
-                borderColor: '#10b981',
-                backgroundColor: 'rgba(16, 185, 129, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointBackgroundColor: '#10b981'
-              },
-              {
-                label: '都度出費 (-)',
-                data: allMonthsSummary.value.map(m => m.extraExpense),
-                borderColor: '#f43f5e',
-                backgroundColor: 'rgba(244, 63, 94, 0.1)',
-                fill: true,
-                tension: 0.3,
-                pointBackgroundColor: '#f43f5e'
-              }
+              { label: '繰越 (+)', data: rows.map(m => m.carryover), backgroundColor: COLORS.usable, borderRadius: 3, maxBarThickness: 22 },
+              { label: '都度 (−)', data: rows.map(m => -m.extraExpense), backgroundColor: COLORS.expense, borderRadius: 3, maxBarThickness: 22 }
             ];
+            stacked = true;
           }
 
           trendChartInstance = new Chart(trendChartRef.value, {
-            type: 'line',
-            data: { labels: labels, datasets: datasets },
+            type,
+            data: { labels, datasets },
             options: {
-              responsive: true,
-              maintainAspectRatio: false,
+              responsive: true, maintainAspectRatio: false,
+              interaction: { mode: 'index', intersect: false },
               plugins: {
-                legend: { display: true, position: 'top', labels: { font: { size: 10 } } }
+                legend: { position: 'top', align: 'end', labels: { boxWidth: 10, boxHeight: 10, usePointStyle: true, pointStyle: 'circle' } },
+                tooltip: {
+                  callbacks: {
+                    title: (ctx) => fullLabels[ctx[0].dataIndex],
+                    label: (ctx) => ` ${ctx.dataset.label}: ¥${Math.abs(ctx.parsed.y).toLocaleString()}`,
+                    footer: (ctx) => {
+                      if (selectedChartType.value === 'extra_flow') return '';
+                      const sum = ctx.reduce((s, c) => s + c.parsed.y, 0);
+                      return `合計: ¥${sum.toLocaleString()}`;
+                    }
+                  }
+                }
               },
               scales: {
-                y: { beginAtZero: true, ticks: { font: { size: 10 } } },
-                x: { ticks: { font: { size: 10 } } }
+                x: { stacked, grid: { display: false } },
+                y: { stacked, beginAtZero: true, ticks: { callback: yenTick }, grid: { color: COLORS.line } }
               }
             }
           });
@@ -799,7 +977,7 @@
               const mayumiShare = Math.ceil(m.mayumiSum / 1000) * 1000;
               const totalExpense = keigoShare + mayumiShare + m.commonSum;
               const baseSavings = m.income - totalExpense;
-              
+
               const baseUsable = Math.round((baseSavings * (ratio / 100)) / 1000) * 1000;
               const baseUnusable = baseSavings - baseUsable;
 
@@ -841,12 +1019,10 @@
           }
         };
 
-        const toggleSummary = async () => {
-          showSummarySection.value = !showSummarySection.value;
-          if (showSummarySection.value) {
-            await fetchAllMonthsSummary();
-            renderTrendChart();
-          }
+        // 集計を再計算し、推移画面表示中ならグラフも更新
+        const refreshSummary = async () => {
+          await fetchAllMonthsSummary();
+          if (currentScreen.value === 'trend') renderTrendChart();
         };
 
         const fetchMonthData = async () => {
@@ -863,10 +1039,10 @@
 
         const resetToTemplate = async () => {
           if (items.value.length > 0) {
-            if (!confirm(`${selectedMonth.value} のデータを初期値（テンプレート）で上書きしますか？`)) return;
+            if (!confirm(`${monthLabel.value} のデータをテンプレートで上書きしますか？`)) return;
           }
           await db.from('records').delete().eq('date', `${selectedMonth.value}-01`);
-          
+
           const { data: tempRecords } = await db.from('records').select('*').eq('date', 'template');
           if (tempRecords && tempRecords.length > 0) {
             const newRecords = tempRecords.map(t => ({
@@ -874,9 +1050,10 @@
             }));
             const { data: created } = await db.from('records').insert(newRecords).select();
             if (created) items.value = created.map(d => ({ ...d, amount: Number(d.amount) }));
+          } else {
+            items.value = [];
           }
-          await fetchAllMonthsSummary();
-          if (showSummarySection.value) renderTrendChart();
+          await refreshSummary();
         };
 
         onMounted(async () => {
@@ -901,7 +1078,8 @@
         const keigoShare = computed(() => Math.ceil(keigoSum.value / 1000) * 1000);
         const mayumiShare = computed(() => Math.ceil(mayumiSum.value / 1000) * 1000);
         const totalExpense = computed(() => keigoShare.value + mayumiShare.value + commonSum.value);
-        
+        const expenseRawTotal = computed(() => expenseItems.value.reduce((s, i) => s + (Number(i.amount) || 0), 0));
+
         const baseSavings = computed(() => totalIncome.value - totalExpense.value);
         const baseSavingsUsable = computed(() => Math.round((baseSavings.value * (usableRatio.value / 100)) / 1000) * 1000);
         const baseSavingsUnusable = computed(() => baseSavings.value - baseSavingsUsable.value);
@@ -915,13 +1093,46 @@
         const savingsUnusable = computed(() => baseSavingsUnusable.value + carryoverUnusableSum.value - extraUnusableSum.value);
         const savings = computed(() => savingsUsable.value + savingsUnusable.value);
 
+        // 収入の行き先（収入 = 麻由美 + 慶吾 + 共通 + 残り）
+        const flowSegments = computed(() => {
+          const rest = Math.max(0, baseSavings.value);
+          const segs = [
+            { key: 'ayumi', label: '麻由美の取り分', value: mayumiShare.value, color: 'var(--ayumi)' },
+            { key: 'keigo', label: '慶吾の取り分', value: keigoShare.value, color: 'var(--keigo)' },
+            { key: 'common', label: '共通の支出', value: commonSum.value, color: 'var(--common)' },
+            { key: 'rest', label: '残り（貯金へ）', value: rest, color: 'var(--usable)' }
+          ];
+          const base = Math.max(totalIncome.value, totalExpense.value);
+          return segs.map(s => ({ ...s, pct: pctOf(s.value, base) }));
+        });
+
+        const categoryBreakdown = computed(() => {
+          const total = expenseRawTotal.value;
+          return CATEGORIES.map((name, idx) => {
+            const value = expenseItems.value.filter(i => i.category === name).reduce((s, i) => s + (Number(i.amount) || 0), 0);
+            return { name, value, color: CATEGORY_COLORS[idx], pct: pctOf(value, total) };
+          }).filter(c => c.value > 0).sort((a, b) => b.value - a.value);
+        });
+
+        const expenseGroups = computed(() => {
+          const names = [...CATEGORIES];
+          expenseItems.value.forEach(i => { if (!names.includes(i.category)) names.push(i.category); });
+          return names.map(name => {
+            const list = expenseItems.value.filter(i => i.category === name);
+            return { name, items: list, total: list.reduce((s, i) => s + (Number(i.amount) || 0), 0) };
+          }).filter(g => g.items.length > 0);
+        });
+
         const yearlySummary = computed(() => {
           const months = allMonthsSummary.value.filter(m => m.month.startsWith(currentYear.value));
           return {
+            months: months.length,
             income: months.reduce((s, m) => s + m.income, 0),
             savings: months.reduce((s, m) => s + m.savings, 0)
           };
         });
+
+        const monthsDesc = computed(() => [...allMonthsSummary.value].reverse());
 
         const totalCumulativeUsableSavings = computed(() => {
           return allMonthsSummary.value.reduce((s, m) => s + (m.finalUsable || 0), 0);
@@ -938,17 +1149,34 @@
         const progressPercent = computed(() => {
           if (!targetAmount.value || targetAmount.value <= 0) return 0;
           const p = (totalCumulativeUsableSavings.value / targetAmount.value) * 100;
-          return Math.min(100, Math.max(0, p)).toFixed(1);
+          return Math.min(100, Math.max(0, p));
         });
 
-        watch(expenseItems, () => { if (currentTab.value === 'expense') renderDonutChart(); }, { deep: true });
-        watch(currentTab, (val) => { if (val === 'expense') renderDonutChart(); });
-        watch(selectedChartType, () => { if (showSummarySection.value) renderTrendChart(); });
+        // テーマ切替（ダーク ⇔ 手帳）
+        const toggleTheme = () => {
+          theme.value = theme.value === 'dark' ? 'light' : 'dark';
+          document.documentElement.setAttribute('data-theme', theme.value);
+          localStorage.setItem('kakeibo_theme', theme.value);
+          const meta = document.querySelector('meta[name="theme-color"]');
+          if (meta) meta.setAttribute('content', cssVar('--bg'));
+          applyChartDefaults();
+          if (currentScreen.value === 'trend') renderTrendChart();
+          if (currentScreen.value === 'detail' && currentTab.value === 'expense') renderDonutChart();
+        };
+
+        // 画面・タブ切替に応じてグラフを描画
+        watch(currentScreen, async (val) => {
+          if (val === 'trend') { await fetchAllMonthsSummary(); renderTrendChart(); }
+          else if (val === 'detail' && currentTab.value === 'expense') renderDonutChart();
+          window.scrollTo({ top: 0 });
+        });
+        watch(expenseItems, () => { if (currentScreen.value === 'detail' && currentTab.value === 'expense') renderDonutChart(); }, { deep: true });
+        watch(currentTab, (val) => { showAddForm.value = false; if (val === 'expense') renderDonutChart(); });
+        watch(selectedChartType, () => { if (currentScreen.value === 'trend') renderTrendChart(); });
 
         const saveItem = async (item) => {
           await db.from('records').update({ amount: item.amount, payer: item.payer }).eq('id', item.id);
-          await fetchAllMonthsSummary();
-          if (showSummarySection.value) renderTrendChart();
+          await refreshSummary();
         };
 
         const togglePayer = async (item) => {
@@ -957,36 +1185,40 @@
           await saveItem(item);
         };
 
+        const openAddForm = (type) => {
+          newItem.value.type = type;
+          showAddForm.value = true;
+        };
+
         const addNewItem = async () => {
           if (!newItem.value.title || newItem.value.amount === null || newItem.value.amount === '') {
-             alert('項目名と金額を正しく入力してください。'); return; 
+            alert('項目名と金額を正しく入力してください。'); return;
           }
           const { data } = await db.from('records').insert([{ ...newItem.value, date: `${selectedMonth.value}-01` }]).select();
-          if (data) { items.value.push({ ...data[0], amount: Number(data[0].amount) }); newItem.value.title = ''; newItem.value.amount = null; showAddForm.value = false; await fetchAllMonthsSummary(); if (showSummarySection.value) renderTrendChart(); }
+          if (data) { items.value.push({ ...data[0], amount: Number(data[0].amount) }); newItem.value.title = ''; newItem.value.amount = null; showAddForm.value = false; await refreshSummary(); }
         };
 
         const addCarryoverItem = async () => {
           if (!newCarryover.value.title || newCarryover.value.amount === null || newCarryover.value.amount === '') {
-             alert('名目と金額を正しく入力してください。'); return; 
+            alert('名目と金額を正しく入力してください。'); return;
           }
           const { data } = await db.from('records').insert([{ type: 'carryover', category: '繰越金', title: newCarryover.value.title, amount: newCarryover.value.amount, payer: newCarryover.value.payer, date: `${selectedMonth.value}-01` }]).select();
-          if (data) { items.value.push({ ...data[0], amount: Number(data[0].amount) }); newCarryover.value.title = ''; newCarryover.value.amount = null; await fetchAllMonthsSummary(); if (showSummarySection.value) renderTrendChart(); }
+          if (data) { items.value.push({ ...data[0], amount: Number(data[0].amount) }); newCarryover.value.title = ''; newCarryover.value.amount = null; await refreshSummary(); }
         };
 
         const addExtraExpenseItem = async () => {
           if (!newExtra.value.title || newExtra.value.amount === null || newExtra.value.amount === '') {
-             alert('名目と金額を正しく入力してください。'); return; 
+            alert('名目と金額を正しく入力してください。'); return;
           }
           const { data } = await db.from('records').insert([{ type: 'extra_expense', category: '都度出費', title: newExtra.value.title, amount: newExtra.value.amount, payer: newExtra.value.payer, date: `${selectedMonth.value}-01` }]).select();
-          if (data) { items.value.push({ ...data[0], amount: Number(data[0].amount) }); newExtra.value.title = ''; newExtra.value.amount = null; await fetchAllMonthsSummary(); if (showSummarySection.value) renderTrendChart(); }
+          if (data) { items.value.push({ ...data[0], amount: Number(data[0].amount) }); newExtra.value.title = ''; newExtra.value.amount = null; await refreshSummary(); }
         };
 
         const deleteItem = async (id) => {
           if (!confirm('削除しますか？')) return;
           await db.from('records').delete().eq('id', id);
           items.value = items.value.filter(i => i.id !== id);
-          await fetchAllMonthsSummary();
-          if (showSummarySection.value) renderTrendChart();
+          await refreshSummary();
         };
 
         const saveTemplateItem = async (t) => { await db.from('records').update({ amount: t.amount, payer: t.payer }).eq('id', t.id); };
@@ -997,7 +1229,7 @@
         };
         const addTemplateItem = async () => {
           if (!newTemp.value.title || newTemp.value.amount === null || newTemp.value.amount === '') {
-             alert('項目名と金額を正しく入力してください。'); return; 
+            alert('項目名と金額を正しく入力してください。'); return;
           }
           const { data } = await db.from('records').insert([{ ...newTemp.value, date: 'template' }]).select();
           if (data) { templateItems.value.push({ ...data[0], amount: Number(data[0].amount) }); newTemp.value.title = ''; newTemp.value.amount = null; showAddTempForm.value = false; }
@@ -1008,42 +1240,43 @@
           templateItems.value = templateItems.value.filter(t => t.id !== id);
         };
 
-        const closeTemplateModal = () => { showTemplateModal.value = false; fetchMonthData(); };
-
         // Firebase設定
         const saveFirebaseUrl = () => {
           if (firebaseUrl.value) {
             db.setFirebaseUrl(firebaseUrl.value);
-            firebaseStatus.value = '✅ Firebase URL保存完了。データ同期が有効になりました。';
+            firebaseStatus.value = 'URLを保存しました。同期が有効です。';
           } else {
             localStorage.removeItem('kakeibo_firebase_url');
-            firebaseStatus.value = '未設定（ローカルのみ）';
+            firebaseStatus.value = '未設定（この端末のみ）';
           }
         };
 
         const uploadDataToFirebase = async () => {
           if (!db.isFirebaseConfigured()) {
-            firebaseStatus.value = '⚠️ 先にFirebase URLを保存してください';
+            firebaseStatus.value = '先にURLを保存してください';
             return;
           }
           try {
-            firebaseStatus.value = '⏳ アップロード中...';
+            firebaseStatus.value = 'アップロード中…';
             await db.uploadToFirebase();
-            firebaseStatus.value = '✅ アップロード完了！全データがFirebaseに同期されました。';
+            firebaseStatus.value = 'アップロード完了。全データを同期しました。';
           } catch (e) {
-            firebaseStatus.value = '❌ エラー: ' + e.message;
+            firebaseStatus.value = 'エラー: ' + e.message;
           }
         };
 
         return {
-          selectedMonth, currentTab, items, templateItems, incomeItems, expenseItems, carryoverItems, extraExpenseItems,
-          totalIncome, totalExpense, savings, usableRatio, savingsUsable, savingsUnusable, baseSavingsUsable, baseSavingsUnusable,
+          CATEGORIES, RING_C, fmt, fmtMan, pctOf, payerClass,
+          selectedMonth, monthLabel, shiftMonth, jumpToMonth, currentScreen, currentTab, theme, toggleTheme,
+          items, templateItems, incomeItems, expenseItems, carryoverItems, extraExpenseItems,
+          totalIncome, totalExpense, expenseRawTotal, commonSum, savings, usableRatio, savingsUsable, savingsUnusable, baseSavingsUsable, baseSavingsUnusable,
           carryoverUsableSum, carryoverUnusableSum, extraUsableSum, extraUnusableSum, keigoSum, mayumiSum, keigoShare, mayumiShare,
-          showAddForm, showTemplateModal, showSummarySection, toggleSummary, allMonthsSummary, isSummaryLoading, currentYear, yearlySummary,
+          flowSegments, categoryBreakdown, expenseGroups,
+          showAddForm, openAddForm, allMonthsSummary, monthsDesc, isSummaryLoading, currentYear, yearlySummary,
           targetName, targetAmount, totalCumulativeUsableSavings, totalCumulativeUnusableSavings, totalCumulativeSavings, progressPercent, selectedChartType,
           newItem, newCarryover, newExtra, newTemp, errorMessage,
           fetchMonthData, resetToTemplate, saveItem, togglePayer, addNewItem, addCarryoverItem, addExtraExpenseItem, deleteItem,
-          saveTemplateItem, addTemplateItem, deleteTemplateItem, closeTemplateModal, saveSettings,
+          saveTemplateItem, addTemplateItem, deleteTemplateItem, saveSettings,
           currentTemplateTab, showAddTempForm, templateIncomeItems, templateExpenseItems, toggleTemplatePayer,
           trendChartRef, donutChartRef,
           firebaseUrl, firebaseStatus, saveFirebaseUrl, uploadDataToFirebase

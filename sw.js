@@ -1,4 +1,4 @@
-const CACHE_NAME = 'kakeibo-couple-v1';
+const CACHE_NAME = 'kakeibo-couple-v2';
 const ASSETS_TO_CACHE = [
   './',
   './index.html',
@@ -7,7 +7,6 @@ const ASSETS_TO_CACHE = [
   './manifest.json',
   './apple-touch-icon.png',
   'https://unpkg.com/vue@3/dist/vue.global.js',
-  'https://cdn.tailwindcss.com',
   'https://cdn.jsdelivr.net/npm/chart.js'
 ];
 
@@ -35,8 +34,9 @@ self.addEventListener('activate', (event) => {
 
 // Fetch: network first, fallback to cache
 self.addEventListener('fetch', (event) => {
-  // Skip Firebase API requests (always go to network)
-  if (event.request.url.includes('firebaseio.com')) {
+  // Skip non-GET and Firebase API requests (always go to network)
+  const url = event.request.url;
+  if (event.request.method !== 'GET' || url.includes('firebaseio.com') || url.includes('firebasedatabase.app')) {
     return;
   }
 

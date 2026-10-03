@@ -4,8 +4,8 @@
   "description": "夫婦の月次収支をまとめて管理するダッシュボード",
   "start_url": "./index.html",
   "display": "standalone",
-  "background_color": "#f8fafc",
-  "theme_color": "#4f46e5",
+  "background_color": "#1f1d1b",
+  "theme_color": "#1f1d1b",
   "orientation": "portrait",
   "icons": [
     {
